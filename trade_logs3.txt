@@ -1,0 +1,93 @@
+
+######################
+Time : 2025-12-02 22:00:01.462959
+LLM Trade Önerisi: BTCUSDT LONG (Güven: %90)
+Haber: The Daily: Grayscale predicts new bitcoin highs in 2026, ‘Vanguard effect’ lifts crypto markets, Chainlink ETF debuts, and more - The Block
+######################
+
+######################
+Time : 2025-12-02 22:00:01.465671
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 91954.49 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+News : The Daily: Grayscale predicts new bitcoin highs in 2026, ‘Vanguard effect’ lifts crypto markets, Chainlink ETF debuts, and more - The Block
+Reason: Positive price prediction and market lift
+######################
+
+######################
+Time : 2025-12-02 22:00:01.470131
+LLM Trade Önerisi: LINKUSDT LONG (Güven: %88)
+Haber: The Daily: Grayscale predicts new bitcoin highs in 2026, ‘Vanguard effect’ lifts crypto markets, Chainlink ETF debuts, and more - The Block
+######################
+
+######################
+Time : 2025-12-02 22:00:01.473232
+🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.37 | Top Point : 4.0 | Stop Loss : 0.9 | VM : 10 minutes
+Src: TELEGRAM
+News : The Daily: Grayscale predicts new bitcoin highs in 2026, ‘Vanguard effect’ lifts crypto markets, Chainlink ETF debuts, and more - The Block
+Reason: Chainlink ETF debut
+######################
+
+######################
+Time : 2025-12-02 22:19:29.749377
+[TELEGRAM] İlgili parite bulunamadı veya pas geçildi.
+Haber: Amazon Enters AI Arms Race as Crypto and Risk Asset Fears Mount
+
+The pivot to AI comes with risks, including heavy borrowing and concerns about sustainability, with potential shortfalls if demand for AI slows.
+Response: {'trades': []}
+######################
+
+######################
+Time : 2025-12-02 22:54:10.592749
+⚠️ LLM 'wet' önerdi ama izleme listesinde yok.
+Haber: Coinbase announced that it has added Humidifi (WET), zkPass (ZKP), Plume (PLUME), Hyperlane (HYPER), and Jupiter (JUPITER) to its asset listing roadmap. — link
+######################
+
+######################
+Time : 2025-12-02 22:54:10.599320
+⚠️ LLM 'zkp' önerdi ama izleme listesinde yok.
+Haber: Coinbase announced that it has added Humidifi (WET), zkPass (ZKP), Plume (PLUME), Hyperlane (HYPER), and Jupiter (JUPITER) to its asset listing roadmap. — link
+######################
+
+######################
+Time : 2025-12-02 22:54:10.601577
+⚠️ LLM 'plume' önerdi ama izleme listesinde yok.
+Haber: Coinbase announced that it has added Humidifi (WET), zkPass (ZKP), Plume (PLUME), Hyperlane (HYPER), and Jupiter (JUPITER) to its asset listing roadmap. — link
+######################
+
+######################
+Time : 2025-12-02 22:54:10.605063
+⚠️ LLM 'hyper' önerdi ama izleme listesinde yok.
+Haber: Coinbase announced that it has added Humidifi (WET), zkPass (ZKP), Plume (PLUME), Hyperlane (HYPER), and Jupiter (JUPITER) to its asset listing roadmap. — link
+######################
+
+######################
+Time : 2025-12-02 22:54:10.606795
+⚠️ LLM 'jupiter' önerdi ama izleme listesinde yok.
+Haber: Coinbase announced that it has added Humidifi (WET), zkPass (ZKP), Plume (PLUME), Hyperlane (HYPER), and Jupiter (JUPITER) to its asset listing roadmap. — link
+######################
+
+######################
+Time : 2025-12-02 23:11:09.939773
+LLM Trade Önerisi: BTCUSDT LONG (Güven: %90)
+Haber: 🔥 INSIGHT: Eric Balchunas said $BTC spiked about 6% at the US open on the first day after Vanguard lifted its ETF ban, noting IBIT traded $1B in volume in the first 30 minutes.
+
+News | Markets | YouTube
+######################
+
+######################
+Time : 2025-12-02 23:11:09.943988
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 91753.91 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+News : 🔥 INSIGHT: Eric Balchunas said $BTC spiked about 6% at the US open on the first day after Vanguard lifted its ETF ban, noting IBIT traded $1B in volume in the first 30 minutes.
+
+News | Markets | YouTube
+Reason: Significant ETF trading volume and price increase post-ban lift
+######################
+
+######################
+Time : 2025-12-03 20:39:39.982978
+⚠️ LLM 'coin' önerdi ama izleme listesinde yok.
+Haber: 🇺🇸 JUST IN: Coinbase CEO Brian Armstrong says major U.S. banks are partnering with the exchange on pilots involving stablecoins, custody, and trading.
+
+News | Markets | YouTube
+######################

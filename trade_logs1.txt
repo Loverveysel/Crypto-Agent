@@ -1,0 +1,49 @@
+
+######################
+Time : 2025-12-02 17:06:59.037272
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 87854.79 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Institutional backing and ETF coverage
+######################
+
+######################
+Time : 2025-12-02 17:20:30.039509
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 88351.33 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Institutional adoption news
+######################
+
+######################
+Time : 2025-12-02 18:02:06.698645
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 89532.0 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Vanguard ETF access - significant institutional adoption
+######################
+
+######################
+Time : 2025-12-02 18:02:06.711519
+🔵 POZİSYON AÇILDI: ETHUSDT LONG | Giriş: 2904.31 | Top Point : 3.0 | Stop Loss : 0.7 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Vanguard ETF access - significant institutional adoption
+######################
+
+######################
+Time : 2025-12-02 18:02:06.725880
+🔵 POZİSYON AÇILDI: XRPUSDT LONG | Giriş: 2.0964 | Top Point : 2.8 | Stop Loss : 0.6 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Vanguard ETF access - significant institutional adoption
+######################
+
+######################
+Time : 2025-12-02 18:02:06.731160
+🔵 POZİSYON AÇILDI: SOLUSDT LONG | Giriş: 133.33 | Top Point : 2.5 | Stop Loss : 0.5 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Vanguard ETF access - significant institutional adoption
+######################
+
+######################
+Time : 2025-12-02 19:20:26.524206
+🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.36 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: TELEGRAM
+Reason: Grayscale Chainlink ETF listing
+######################

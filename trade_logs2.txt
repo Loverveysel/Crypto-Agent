@@ -1,0 +1,68 @@
+
+######################
+Time : 2025-12-02 20:39:12.586492
+LLM Trade Önerisi: DOTUSDT LONG (Güven: %75)
+Haber: Polkadot Surges 13% After Breaking Above Key Resistance  The token outpaced broader crypto markets as volume spiked 34% above weekly averages.
+######################
+
+######################
+Time : 2025-12-02 20:39:12.588115
+Pas Geçildi: DOTUSDT LONG (Güven: %75)
+Haber: Polkadot Surges 13% After Breaking Above Key Resistance  The token outpaced broader crypto markets as volume spiked 34% above weekly averages.
+######################
+
+######################
+Time : 2025-12-02 20:40:54.297055
+LLM Trade Önerisi: LINKUSDT LONG (Güven: %90)
+Haber: Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK Price Jumps  The debut marks the first U.S. ETF tied to Chainlink, which secures tens of billions of dollars in onchain value across DeFi and gaming.
+######################
+
+######################
+Time : 2025-12-02 20:40:54.300372
+🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.38 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: MANUAL
+News : Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK Price Jumps  The debut marks the first U.S. ETF tied to Chainlink, which secures tens of billions of dollars in onchain value across DeFi and gaming.
+Reason: Chainlink ETF listing on NYSE
+######################
+
+######################
+Time : 2025-12-02 21:01:24.977828
+LLM Trade Önerisi: LINKUSDT LONG (Güven: %90)
+Haber: [20:40:40] 📝 [MANUAL] Analiz Ediliyor: Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK... [20:40:54] ✅ 🎯 HEDEF TESPİT EDİLDİ: LINKUSDT -> LONG [20:40:54] 📝 🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.38 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes Src: MANUAL News : Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK Price Jumps  The debut marks the first U.S. ETF tied to Chainlink, which secures tens of billions of dollars in onchain value across DeFi and gaming. Reason: Chainlink ETF listing on NYSE [20:40:54] ❌ 🚀 MAINNET API: LINKUSDT LONG ❌ [KRİTİK İŞLEM HATASI] API Secret required for private endpoints
+######################
+
+######################
+Time : 2025-12-02 21:01:24.981987
+🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.36 | Top Point : 3.0 | Stop Loss : 0.8 | VM : 10 minutes
+Src: MANUAL
+News : [20:40:40] 📝 [MANUAL] Analiz Ediliyor: Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK... [20:40:54] ✅ 🎯 HEDEF TESPİT EDİLDİ: LINKUSDT -> LONG [20:40:54] 📝 🔵 POZİSYON AÇILDI: LINKUSDT LONG | Giriş: 13.38 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes Src: MANUAL News : Grayscale’s Chainlink ETF Lists on NYSE Arca, LINK Price Jumps  The debut marks the first U.S. ETF tied to Chainlink, which secures tens of billions of dollars in onchain value across DeFi and gaming. Reason: Chainlink ETF listing on NYSE [20:40:54] ❌ 🚀 MAINNET API: LINKUSDT LONG ❌ [KRİTİK İŞLEM HATASI] API Secret required for private endpoints
+Reason: Chainlink ETF listing on NYSE
+######################
+
+######################
+Time : 2025-12-02 21:07:23.490911
+LLM Trade Önerisi: BTCUSDT LONG (Güven: %90)
+Haber: Bank of America Greenlights Wealth Advisors to Recommend Up to 4% Bitcoin Allocation  The news comes just hours after longtime crypto holdout, asset management giant Vanguard, said it would allow its clientele access to digital asset ETFs.
+######################
+
+######################
+Time : 2025-12-02 21:07:23.495584
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 91650.01 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: MANUAL
+News : Bank of America Greenlights Wealth Advisors to Recommend Up to 4% Bitcoin Allocation  The news comes just hours after longtime crypto holdout, asset management giant Vanguard, said it would allow its clientele access to digital asset ETFs.
+Reason: Institutional adoption signal
+######################
+
+######################
+Time : 2025-12-02 21:13:29.983762
+LLM Trade Önerisi: BTCUSDT LONG (Güven: %90)
+Haber: Bank of America Greenlights Wealth Advisors to Recommend Up to 4% Bitcoin Allocation  The news comes just hours after longtime crypto holdout, asset management giant Vanguard, said it would allow its clientele access to digital asset ETFs.
+######################
+
+######################
+Time : 2025-12-02 21:13:29.989718
+🔵 POZİSYON AÇILDI: BTCUSDT LONG | Giriş: 91709.78 | Top Point : 3.5 | Stop Loss : 0.8 | VM : 10 minutes
+Src: MANUAL
+News : Bank of America Greenlights Wealth Advisors to Recommend Up to 4% Bitcoin Allocation  The news comes just hours after longtime crypto holdout, asset management giant Vanguard, said it would allow its clientele access to digital asset ETFs.
+Reason: Institutional adoption news
+######################

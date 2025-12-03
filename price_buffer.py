@@ -13,3 +13,5 @@ class PriceBuffer:
         target = self.buffer[-1][0] - sec
         old = next((p for t, p in self.buffer if t >= target), self.buffer[0][1])
         return ((self.current_price - old) / old) * 100
+    
+

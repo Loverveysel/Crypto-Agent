@@ -10,7 +10,7 @@ class TrainingDataCollector:
         self.filename = filename
         self.pending_events = [] # Karar verildi, sonucu bekleniyor
 
-    def log_decision(self, news, pair, initial_price, stats_1m, model_output, log_ui):
+    def log_decision(self, news, pair, initial_price, stats_1m, model_output):
         """
         Bot bir karar verdiğinde bunu bekleme listesine al.
         """
@@ -24,9 +24,9 @@ class TrainingDataCollector:
             "check_time": time.time() + 900 # 15 dakika (900 sn) sonra kontrol et
         }
         self.pending_events.append(event)
-        log_ui(f"💾 Veri Kaydedildi: Sonuç 15dk sonra kontrol edilecek.", "info")
+        return f"💾 Veri Kaydedildi: Sonuç 15dk sonra kontrol edilecek.", "info"
 
-    async def check_outcomes(self, current_prices, log_ui):
+    async def check_outcomes(self, current_prices):
         """
         Bekleyen olayların süresi doldu mu diye bakar.
         Dolduysa, fiyat hareketine göre 'Ground Truth' oluşturur.
@@ -76,7 +76,7 @@ class TrainingDataCollector:
             if ideal_action != "HOLD":
                 async with aiofiles.open(self.filename, mode='a', encoding='utf-8') as f:
                     await f.write(json.dumps(training_entry) + "\n")
-                log_ui(f"💎 EĞİTİM VERİSİ KAYDEDİLDİ: {pair.upper()} -> {ideal_action}", "success")
+                return f"💎 EĞİTİM VERİSİ KAYDEDİLDİ: {pair.upper()} -> {ideal_action}", "success"
             
             completed.append(event)
 

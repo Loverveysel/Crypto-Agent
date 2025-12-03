@@ -27,3 +27,30 @@ def get_top_pairs(limit=50):
 
 # KULLANIMI:
 # TARGET_PAIRS = get_top_pairs(100)  <-- Bunu yaparsan otomatik olur.
+
+
+def get_top_100_map():
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 100,
+        "page": 1,
+        "sparkline": "false"
+    }
+    
+    try:
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        # Dinamik name_map oluşturuluyor
+        # name (küçük harf) -> symbol (küçük harf)
+        name_map = {coin['name'].lower(): coin['symbol'].lower() for coin in data}
+        
+        # Bazı özel durumlar için (API'dan gelen isimler uzun olabilir) manuel override ekleyebilirsin
+        # Ancak temel liste API'dan gelmeli.
+        return name_map
+
+    except Exception as e:
+        print(f"Hata oluştu: {e}")
+        return {}
