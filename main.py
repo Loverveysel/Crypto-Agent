@@ -14,37 +14,15 @@ from data_collector import TrainingDataCollector
 from dotenv import load_dotenv
 import os 
 import datetime
-<<<<<<< HEAD
 from utils import get_top_100_map
 import re 
 
-=======
-import re 
->>>>>>> origin
 # AYARLAR
 REAL_TRADING_ENABLED = True # <--- DİKKAT DÜĞMESİ! False yaparsan sadece simülasyon çalışır.
 
 # İzlenecek Telegram kanallarının/gruplarının ID'leri (veya kullanıcı adları)
-<<<<<<< HEAD
 TARGET_CHANNELS = ['cointelegraph', 'wublockchainenglish', 'CryptoRankNews', 'TheBlockNewsLite', 'coindesk', 'arkhamintelligence', 'glassnode',  ] 
 name_map = get_top_100_map()
-=======
-TARGET_CHANNELS = ['cointelegraph', 'wublockchainenglish', 'CryptoRankNews', 'TheBlockNewsLite', 'whale_alert_io', 'coindesk', 'arkhamintelligence', 'glassnode',  ] 
-name_map = {
-        'polygon': 'matic',
-        'ripple': 'xrp',
-        'cardano': 'ada',
-        'avalanche': 'avax',
-        'dogecoin': 'doge',
-        'ethereum': 'eth',
-        'bitcoin': 'btc',
-        'bnb chain': 'bnb',
-        'solana': 'sol',
-        'arbitrum': 'arb',
-        'optimism': 'op'
-    }
-
->>>>>>> origin
 # İzlenecek pariteler (küçük harf)
 TARGET_PAIRS = get_top_pairs(50)  # Otomatik en çok işlem gören 50 pariteyi al
 # --- Environments --- 
@@ -61,11 +39,7 @@ MODEL = os.getenv('MODEL')
 # BU ŞALTERE DİKKAT ET!
 # True  = MAINNET (Gerçek Para Gider)
 # False = TESTNET (Binance Kum Havuzu)
-<<<<<<< HEAD
 USE_MAINNET = True 
-=======
-USE_MAINNET = False 
->>>>>>> origin
 
 if USE_MAINNET:
     API_KEY = os.getenv('BINANCE_API_KEY')
@@ -246,7 +220,6 @@ async def websocket_loop():
                             ts = payload['T'] / 1000.0
                             
                             market_memory[pair].add(price, ts)
-<<<<<<< HEAD
                             # --- GÜNCELLENMİŞ KISIM ---
                             # check_positions artık 3 değer döndürüyor
                             log, color, closed_symbol = exchange.check_positions(pair, price)
@@ -265,17 +238,12 @@ async def websocket_loop():
                                     asyncio.create_task(real_exchange.close_position_market(closed_symbol))
                             # --------------------------
 
-=======
-                            log, color = exchange.check_positions(pair, price)
-                            if log or color : log_ui(log, color)
->>>>>>> origin
                 except Exception as e:
                     log_ui(f"WS Okuma Hatası: {e}", "error")
         except Exception as e:
             log_ui(f"WS Bağlantı Hatası (5sn Bekleniyor): {e}", "error")
             await asyncio.sleep(5)
 
-<<<<<<< HEAD
 IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price analysis', 'prediction', 'overview', 'roundup', 'market wrap']
 
 async def process_news(msg, source="TELEGRAM"):
@@ -370,84 +338,17 @@ async def process_news(msg, source="TELEGRAM"):
                 leverage=LEVERAGE,
                 tp_pct=dec['tp_pct'],
                 sl_pct=dec['sl_pct'],
-=======
-async def process_news(msg, source="TELEGRAM"):
-    if not app_state.is_running: return
-
-    log_ui(f"[{source}] Analiz Ediliyor: {msg[:50]}...", "info")
-    
-    # 1. BEYİN ANALİZİ (Tüm market listesini gönderiyoruz)
-    # LLM'e sadece 'BTC', 'ETH' gibi saf isimleri yolluyoruz, USDT kalabalığı yapmasın.
-    response = await brain.analyze(msg, TARGET_PAIRS)
-    
-    trades = response.get('trades', [])
-    
-    if not trades:
-        log_ui(f"[{source}] İlgili parite bulunamadı veya pas geçildi.", "info")
-        print(response)
-        return
-
-    # 2. LLM'DEN GELEN EMİRLERİ İŞLE
-    for trade in trades:
-        symbol_raw = trade.get('symbol', '').lower()
-        action = trade.get('action', 'HOLD')
-        confidence = trade.get('confidence', 0)
-        
-        # LLM bazen 'BTC' döner, bazen 'Bitcoin'. Bizim listemizle eşleştirelim.
-        # Basitçe sonuna 'usdt' ekleyip listemizde var mı bakalım.
-        pair = f"{symbol_raw}usdt"
-        
-        # Listemizde yoksa (Örn: LLM 'XMR' dedi ama biz izlemiyoruz) geç.
-        if pair not in TARGET_PAIRS:
-            log_ui(f"⚠️ LLM '{symbol_raw}' önerdi ama izleme listesinde yok.", "warning")
-            continue
-            
-        # Market verisini çek
-        stats = market_memory[pair]
-        if stats.current_price == 0:
-            log_ui(f"⚠️ {pair.upper()} fiyat verisi eksik.", "error")
-            continue
-
-        log_ui(f"🎯 HEDEF TESPİT EDİLDİ: {pair.upper()} -> {action}", "success")
-
-        # Güven Kontrolü
-        if confidence > 75 and action in ['LONG', 'SHORT']:
-            validity = trade.get('validity_minutes', 15)
-            tp_pct = trade.get('tp_pct', 2.0)
-            sl_pct = trade.get('sl_pct', 1.0)
-
-            # A. Paper Trading
-            log, color = exchange.open_position(
-                symbol=pair,
-                side=action,
-                price=stats.current_price,
-                amount_usdt=FIXED_TRADE_AMOUNT,
-                leverage=LEVERAGE,
-                tp_pct=tp_pct,
-                sl_pct=sl_pct,
->>>>>>> origin
                 validity=validity,
                 app_state=app_state
             )
             
-<<<<<<< HEAD
             full_log = log + f'\nSrc: {source}\nReason: {dec.get("reason")}\nNews: {msg}\nConfidence: %{dec["confidence"]}\n'
             log_ui(full_log, color)
             log_txt(full_log, "trade_logs.txt")
-=======
-            full_log = log + f'\nSrc: {source}\nReason: {trade.get("reason")}'
-            log_ui(full_log, color)
-            log_txt(full_log, "trade_logs.txt")
-            
-            # Veri Toplayıcı (Collector)
-            # Not: Collector yapısını çoklu işlem için güncellemek gerekebilir ama şimdilik loglayalım
-            collector.log_decision(msg, pair, stats.current_price, stats.get_change(60), trade)
->>>>>>> origin
 
             # B. Real Trading
             if REAL_TRADING_ENABLED:
                 env_label = "MAINNET" if USE_MAINNET else "TESTNET"
-<<<<<<< HEAD
                 log_ui(f"🚀 {env_label} EMRİ: {pair.upper()}", "error")
 
 
@@ -466,20 +367,6 @@ async def process_news(msg, source="TELEGRAM"):
 
 
 
-=======
-                log_ui(f"🚀 {env_label} API: {pair.upper()} {action}", "error")
-                
-                asyncio.create_task(real_exchange.execute_trade(
-                    symbol=pair,
-                    side=action,
-                    amount_usdt=FIXED_TRADE_AMOUNT,
-                    leverage=LEVERAGE,
-                    tp_pct=tp_pct,
-                    sl_pct=sl_pct
-                ))
-        else:
-            log_ui(f"Pas Geçildi: {pair.upper()} {action} (Güven: %{confidence})", "warning")
->>>>>>> origin
 
 async def telegram_loop():
     client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)

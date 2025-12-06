@@ -1,11 +1,7 @@
 from binance import AsyncClient
 from binance.enums import *
-<<<<<<< HEAD
 from dotenv import load_dotenv
 
-=======
-from binance.enums import FUTURE_ORDER_TYPE_TAKE_PROFIT_MARKET, FUTURE_ORDER_TYPE_STOP_MARKET
->>>>>>> origin
 
 class BinanceExecutionEngine:
     def __init__(self, api_key, api_secret, testnet=False):
