@@ -74,6 +74,8 @@ exchange = PaperExchange(STARTING_BALANCE)
 brain = AgentBrain() 
 real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTNET)
 collector = TrainingDataCollector()
+telegram_client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)
+
 
 # ---------------------------------------------------------
 # UI FONKSİYONLARI (GÜVENLİ HALE GETİRİLDİ)
@@ -100,6 +102,18 @@ def log_ui(message, type="info"):
             log_container.push(full_msg)
     except Exception:
         pass # UI ölü ise sadece konsola bas ve geç
+
+async def send_telegram_alert(message):
+    """
+    Kritik olayları Telegram'dan 'Kayıtlı Mesajlar'a gönderir.
+    """
+    try:
+        # Client bağlı mı kontrol et
+        if telegram_client.is_connected():
+            # 'me' = Kendine (Saved Messages) mesaj at demektir.
+            await telegram_client.send_message('me', f"🤖 **CRYPTO AGENT ALERT**\n\n{message}")
+    except Exception as e:
+        print(f"Telegram Bildirim Hatası: {e}")
 
 # ---------------------------------------------------------
 # ANA SAYFA TASARIMI
@@ -223,7 +237,7 @@ async def websocket_loop():
                             # --- GÜNCELLENMİŞ KISIM ---
                             # check_positions artık 3 değer döndürüyor
                             log, color, closed_symbol = exchange.check_positions(pair, price)
-                            
+                            asyncio.create_task(send_telegram_alert(log)) if log and color == "success" else None
                             if log:
                                 log_ui(log, color)
                                 log_txt(log, "trade_logs.txt")
@@ -236,6 +250,7 @@ async def websocket_loop():
                                     
                                     log_ui(f"⚡ API SENKRONİZASYONU: {closed_symbol.upper()} kapatılıyor...", "warning")
                                     asyncio.create_task(real_exchange.close_position_market(closed_symbol))
+                                    asyncio.create_task(send_telegram_alert(f"⚡ API SENKRONİZASYONU: {closed_symbol.upper()} kapatılıyor..."))
                             # --------------------------
 
                 except Exception as e:
@@ -254,9 +269,11 @@ async def process_news(msg, source="TELEGRAM"):
     for word in IGNORE_KEYWORDS:
         if word in msg_lower:
             log_ui(f"🛑 [FİLTRE] Bayat haber: '{word}'", "warning")
+            asyncio.create_task(send_telegram_alert(f"🛑 [FİLTRE] Bayat haber: '{word}'"))
             return
 
     log_ui(f"[{source}] Taranıyor: {msg[:40]}...", "info")
+    asyncio.create_task(send_telegram_alert(f"[{source}] Yeni Haber: {msg}"))
 
     # 2. REGEX İLE PARİTE BULMA (Aynı)
     # ... (Mapping kodların burada kalsın) ...
@@ -286,13 +303,16 @@ async def process_news(msg, source="TELEGRAM"):
             if potential_pair in TARGET_PAIRS:
                 log_ui(f"🕵️ AJAN BULDU: {found_symbol.upper()} (Regex kaçırmıştı)", "success")
                 log_txt(f"[{source}] Ajan buldu: {found_symbol.upper()} (Regex kaçırmıştı)\nHaber: {msg}", "debug_logs.txt")
+                asyncio.create_task(send_telegram_alert(f"🕵️ AJAN BULDU: {found_symbol.upper()} (Regex kaçırmıştı)"))
                 detected_pairs.append(potential_pair)
             else:
                 log_ui(f"⚠️ Ajan '{found_symbol}' buldu ama izleme listemizde yok.", "info")
                 log_txt(f"[{source}] Ajan '{found_symbol}' buldu ama izleme listemizde yok.\nHaber: {msg}", "debug_logs.txt")
+                asyncio.create_task(send_telegram_alert(f"⚠️ Ajan '{found_symbol}' buldu ama izleme listemizde yok."))
         else:
             # Ajan da bulamadıysa gerçekten yoktur
-            # log_ui(f"[{source}] İlgili coin bulunamadı.", "info")
+            log_ui(f"[{source}] İlgili coin bulunamadı.", "info")
+            asyncio.create_task(send_telegram_alert(f"[{source}] İlgili coin bulunamadı."))
             return
 
     # 4. BULUNAN HER COİN İÇİN LLM ANALİZİ
@@ -304,11 +324,12 @@ async def process_news(msg, source="TELEGRAM"):
         if stats.current_price == 0:
             log_ui(f"⚠️ {pair.upper()} için fiyat verisi yok.", "error")
             log_txt(f"[{source}] {pair.upper()} için fiyat verisi yok.\nHaber: {msg}", "debug_logs.txt")
+            asyncio.create_task(send_telegram_alert(f"⚠️ {pair.upper()} için fiyat verisi yok."))
             continue
 
         log_ui(f"🔍 TESPİT: {pair.upper()} | Değişim: %{stats.get_change(60):.2f} | LLM'e Soruluyor...", "info")
         log_txt(f"[{source}] {pair.upper()} tespit edildi. Fiyat: {stats.current_price}, 1dk Değişim: %{stats.get_change(60):.2f}\nHaber: {msg}", "debug_logs.txt")
-
+        asyncio.create_task(send_telegram_alert(f"🔍 TESPİT: {pair.upper()} | Değişim: %{stats.get_change(60):.2f} | LLM'e Soruluyor..."))
 
         # --- LLM'E FİYAT DEĞİŞİMİNİ VERİYORUZ ---
         dec = await brain.analyze_specific(
@@ -345,6 +366,9 @@ async def process_news(msg, source="TELEGRAM"):
             full_log = log + f'\nSrc: {source}\nReason: {dec.get("reason")}\nNews: {msg}\nConfidence: %{dec["confidence"]}\n'
             log_ui(full_log, color)
             log_txt(full_log, "trade_logs.txt")
+            # --- YENİ: TELEGRAM BİLDİRİMİ ---
+            # İşlem açıldığı an cebine mesaj gelsin
+            asyncio.create_task(send_telegram_alert(full_log))
 
             # B. Real Trading
             if REAL_TRADING_ENABLED:
@@ -364,16 +388,15 @@ async def process_news(msg, source="TELEGRAM"):
             log = f"[{source}] {pair.upper()} HOLD. Reason: {dec.get('reason')} (Güven: %{dec['confidence']})"
             log_ui(log, "warning")
             log_txt(f"Pas Geçildi: {pair.upper()} {dec['action']} (Güven: %{dec['confidence']})\nHaber: {msg}", "trade_logs.txt")
-
+            asyncio.create_task(send_telegram_alert(log))
 
 
 
 async def telegram_loop():
-    client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)
-    await client.start()
+    await telegram_client.start()
     log_ui(f"Telegram {len(TARGET_CHANNELS)} Kanalı Dinliyor 📡", "success")
     
-    @client.on(events.NewMessage(chats=TARGET_CHANNELS))
+    @telegram_client.on(events.NewMessage(chats=TARGET_CHANNELS))
     async def handler(event):
         msg = event.message.message
         if msg:
