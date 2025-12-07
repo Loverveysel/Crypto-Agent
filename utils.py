@@ -1,4 +1,6 @@
 import requests
+from ddgs import DDGS # <--- YENİ IMPORT
+import asyncio
 
 def get_top_pairs(limit=50):
     """Binance'den son 24 saatte en çok hacim yapan USDT paritelerini çeker"""
@@ -54,3 +56,27 @@ def get_top_100_map():
     except Exception as e:
         print(f"Hata oluştu: {e}")
         return {}
+
+def search_web_sync(query):
+    """DuckDuckGo üzerinde senkron arama yapar (Thread içinde çalışacak)"""
+    try:
+        # max_results=2 yeterli, fazlası yavaşlatır ve kafayı karıştırır
+        results = DDGS().text(query, max_results=2)
+        if not results:
+            return "No search results found."
+        
+        # Sonuçları özetle
+        summary = "WEB SEARCH RESULTS:\n"
+        for res in results:
+            summary += f"- {res['title']}: {res['body']}\n"
+        
+        print("Arama tamamlandı.")
+        print(summary)
+        return summary
+    except Exception as e:
+        return f"Search Error: {e}"
+
+async def perform_research(query):
+    """Aramayı arka planda (non-blocking) yapar"""
+    # log_ui(f"🌍 Araştırılıyor: {query}...", "info")
+    return await asyncio.to_thread(search_web_sync, query)

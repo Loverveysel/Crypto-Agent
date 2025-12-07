@@ -179,3 +179,32 @@ class BinanceExecutionEngine:
 
         except Exception as e:
             print(f"❌ [API KAPATMA HATASI] {e}")
+
+    async def fetch_missing_data(self, symbol):
+        """
+        Websocket verisi yoksa, REST API'den son 60 mumu çeker.
+        """
+        symbol = symbol.upper()
+        if not self.client: return None
+
+        try:
+            # Son 60 dakikanın 1 dakikalık mumlarını çek
+            klines = await self.client.futures_klines(symbol=symbol, interval=KLINE_INTERVAL_1MINUTE, limit=60)
+            
+            # Format: [Time, Open, High, Low, Close, Volume, ...]
+            # Bize lazım olan: (Close Price, Timestamp)
+            cleaned_data = []
+            for k in klines:
+                ts = int(k[0]) / 1000 # Saniye
+                close = float(k[4])
+                cleaned_data.append((close, ts))
+            
+            # Ayrıca 24 saatlik değişimi de çekelim
+            ticker = await self.client.futures_ticker(symbol=symbol)
+            change_24h = float(ticker['priceChangePercent'])
+            
+            return cleaned_data, change_24h
+
+        except Exception as e:
+            print(f"⚠️ [API FETCH HATASI] {symbol}: {e}")
+            return None, 0.0

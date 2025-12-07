@@ -2,6 +2,7 @@ import asyncio
 from collections import defaultdict
 import time
 import json
+from scipy import stats
 from telethon import TelegramClient, events
 import websockets
 from nicegui import ui, app # GUI Kütüphanesi
@@ -14,8 +15,9 @@ from data_collector import TrainingDataCollector
 from dotenv import load_dotenv
 import os 
 import datetime
-from utils import get_top_100_map
+from utils import get_top_100_map, perform_research
 import re 
+from dataset_manager import DatasetManager
 
 # AYARLAR
 REAL_TRADING_ENABLED = True # <--- DİKKAT DÜĞMESİ! False yaparsan sadece simülasyon çalışır.
@@ -24,12 +26,16 @@ REAL_TRADING_ENABLED = True # <--- DİKKAT DÜĞMESİ! False yaparsan sadece sim
 TARGET_CHANNELS = ['cointelegraph', 'wublockchainenglish', 'CryptoRankNews', 'TheBlockNewsLite', 'coindesk', 'arkhamintelligence', 'glassnode',  ] 
 name_map = get_top_100_map()
 # İzlenecek pariteler (küçük harf)
-TARGET_PAIRS = get_top_pairs(50)  # Otomatik en çok işlem gören 50 pariteyi al
+TARGET_PAIRS = get_top_pairs(100)  # Otomatik en çok işlem gören 100 pariteyi al
 # --- Environments --- 
 load_dotenv()
 BASE_URL = os.getenv('BASE_URL')
-STREAM_PARAMS = "/".join([f"{pair}@aggTrade" for pair in TARGET_PAIRS])
-WEBSOCKET_URL = BASE_URL + STREAM_PARAMS
+kline_streams = [f"{pair}@kline_1m" for pair in TARGET_PAIRS]
+ticker_stream = ["!miniTicker@arr"] # Tüm marketin 24s değişimini tek kanaldan verir
+
+# Hepsini birleştir
+STREAM_PARAMS = "/".join(kline_streams + ticker_stream)
+WEBSOCKET_URL = f"{BASE_URL}{STREAM_PARAMS}"
 # Telethon
 API_ID = int(os.getenv('API_ID'))
 API_HASH = os.getenv('API_HASH')
@@ -39,7 +45,7 @@ MODEL = os.getenv('MODEL')
 # BU ŞALTERE DİKKAT ET!
 # True  = MAINNET (Gerçek Para Gider)
 # False = TESTNET (Binance Kum Havuzu)
-USE_MAINNET = True 
+USE_MAINNET = False 
 
 if USE_MAINNET:
     API_KEY = os.getenv('BINANCE_API_KEY')
@@ -75,7 +81,7 @@ brain = AgentBrain()
 real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTNET)
 collector = TrainingDataCollector()
 telegram_client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)
-
+dataset_manager = DatasetManager()
 
 # ---------------------------------------------------------
 # UI FONKSİYONLARI (GÜVENLİ HALE GETİRİLDİ)
@@ -217,46 +223,57 @@ async def start_background_tasks():
     asyncio.create_task(collector_loop())
 
 async def websocket_loop():
-    print(f"[SİSTEM] Websocket URL (Kısaltılmış): {WEBSOCKET_URL[:100]}...")
+    print(f"[SİSTEM] Websocket Bağlanıyor...")
     while True:
-        
         try:
             async for ws in websockets.connect(WEBSOCKET_URL, ping_interval=None):
-                log_ui("Websocket Bağlandı ✅", "success")
+                log_ui("Websocket Bağlandı ✅ (Kline + Ticker)", "success")
                 try:
                     while True:
                         msg = await ws.recv()
                         data = json.loads(msg)
-                        if 'data' in data:
-                            payload = data['data']
-                            pair = payload['s'].lower()
-                            price = float(payload['p'])
-                            ts = payload['T'] / 1000.0
+                        
+                        # VERİ TİPİ 1: KLINE (Mum Verisi) -> 1m, 10m, 1h hesaplamak için
+                        # Format: {"e":"kline", "s":"BTCUSDT", "k":{...}}
+                        if 'e' in data and data['e'] == 'kline':
+                            kline = data['k']
+                            pair = data['s'].lower()
+                            close_price = float(kline['c'])
+                            is_closed = kline['x'] # Mum kapandı mı?
+                            ts = kline['t'] / 1000 # Saniye cinsinden
                             
-                            market_memory[pair].add(price, ts)
-                            # --- GÜNCELLENMİŞ KISIM ---
-                            # check_positions artık 3 değer döndürüyor
-                            log, color, closed_symbol = exchange.check_positions(pair, price)
-                            asyncio.create_task(send_telegram_alert(log)) if log and color == "success" else None
+                            # Hafızayı Güncelle
+                            market_memory[pair].update_candle(close_price, ts, is_closed)
+                            
+                            # Simülasyon Kontrolü (Sadece mum kapandığında veya anlık yapılabilir)
+                            # Her saniye yapmamak için sadece is_closed veya belirli aralıkla yapılabilir
+                            # Ama senin bot hızlı olsun istiyoruz, her güncellemede yapalım:
+                            log, color, closed_symbol, pnl = exchange.check_positions(pair, close_price)
                             if log:
                                 log_ui(log, color)
                                 log_txt(log, "trade_logs.txt")
-                                
-                                # EĞER BİR POZİSYON KAPANDIYSA VE GERÇEK TİCARET AÇIKSA
+                                asyncio.create_task(send_telegram_alert(log))
+                                if closed_symbol:
+                                    dataset_manager.log_trade_exit(closed_symbol, pnl, "Closed")
                                 if closed_symbol and REAL_TRADING_ENABLED:
-                                    # Kapatma sebebi "TIME LIMIT" veya "TP/SL" olabilir.
-                                    # Simülasyon kapattıysa, gerçek borsada da kapatmalıyız.
-                                    # Özellikle Time Limit dolduğunda API'ye emir gitmesi şart.
-                                    
-                                    log_ui(f"⚡ API SENKRONİZASYONU: {closed_symbol.upper()} kapatılıyor...", "warning")
                                     asyncio.create_task(real_exchange.close_position_market(closed_symbol))
-                                    asyncio.create_task(send_telegram_alert(f"⚡ API SENKRONİZASYONU: {closed_symbol.upper()} kapatılıyor..."))
-                            # --------------------------
+
+                        # VERİ TİPİ 2: 24 SAAT TİCKER (Toplu gelir)
+                        # Format: [{"s":"BTCUSDT", "P":"5.40"...}, ...]
+                        elif isinstance(data, list): 
+                            for item in data:
+                                # Sadece bizim izlediğimiz coinlerse işle
+                                pair = item['s'].lower()
+                                if pair in market_memory:
+                                    # "P" = Price change percent
+                                    change_24h = float(item['P'])
+                                    market_memory[pair].set_24h_change(change_24h)
 
                 except Exception as e:
-                    log_ui(f"WS Okuma Hatası: {e}", "error")
+                    # log_ui(f"WS Okuma Hatası: {e}", "error")
+                    pass
         except Exception as e:
-            log_ui(f"WS Bağlantı Hatası (5sn Bekleniyor): {e}", "error")
+            log_ui(f"WS Koptu (5sn): {e}", "error")
             await asyncio.sleep(5)
 
 IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price analysis', 'prediction', 'overview', 'roundup', 'market wrap']
@@ -265,7 +282,8 @@ async def process_news(msg, source="TELEGRAM"):
     if not app_state.is_running: return
 
     # 1. TEMİZLİK VE FİLTRELEME (Aynı)
-    msg_lower = msg.lower()
+    clean_msg = msg.replace("— link", "").replace("Link:", "")
+    msg_lower = clean_msg.lower()
     for word in IGNORE_KEYWORDS:
         if word in msg_lower:
             log_ui(f"🛑 [FİLTRE] Bayat haber: '{word}'", "warning")
@@ -322,23 +340,51 @@ async def process_news(msg, source="TELEGRAM"):
         
         # Fiyat verisi yoksa (Websocket daha veri atmadıysa)
         if stats.current_price == 0:
-            log_ui(f"⚠️ {pair.upper()} için fiyat verisi yok.", "error")
-            log_txt(f"[{source}] {pair.upper()} için fiyat verisi yok.\nHaber: {msg}", "debug_logs.txt")
-            asyncio.create_task(send_telegram_alert(f"⚠️ {pair.upper()} için fiyat verisi yok."))
-            continue
-
-        log_ui(f"🔍 TESPİT: {pair.upper()} | Değişim: %{stats.get_change(60):.2f} | LLM'e Soruluyor...", "info")
+            log_ui(f"⚠️ {pair.upper()} RAM'de yok, API'den 'Backfill' yapılıyor...", "warning")
+            
+            # Binance Client üzerinden geçmiş veriyi çek
+            history_data, change_24h = await real_exchange.fetch_missing_data(pair)
+            if history_data:
+                # Veriyi hafızaya doldur (Backfill)
+                for close_price, ts in history_data:
+                    # is_closed=True diyoruz ki geçmiş listesine eklesin
+                    stats.update_candle(close_price, ts, is_closed=True)
+                
+                # 24s Değişimi de ayarla
+                stats.set_24h_change(change_24h)
+                
+                log_ui(f"✅ {pair.upper()} verisi kurtarıldı. Analize devam ediliyor.", "success")
+            else:
+                # API'den de çekemediysek yapacak bir şey yok, şimdi hata ver
+                log_ui(f"❌ {pair.upper()} verisi API'den de alınamadı. Atlanıyor.", "error")
+                continue
+        
+        all_changes = stats.get_all_changes()
+        log_ui(f"🔍 Analiz: {pair.upper()} | 1m: {all_changes['1m']:.2f}% | 24h: {all_changes['24h']:.2f}%", "info")
         log_txt(f"[{source}] {pair.upper()} tespit edildi. Fiyat: {stats.current_price}, 1dk Değişim: %{stats.get_change(60):.2f}\nHaber: {msg}", "debug_logs.txt")
         asyncio.create_task(send_telegram_alert(f"🔍 TESPİT: {pair.upper()} | Değişim: %{stats.get_change(60):.2f} | LLM'e Soruluyor..."))
 
-        # --- LLM'E FİYAT DEĞİŞİMİNİ VERİYORUZ ---
+        # --- YENİ KISIM: AKILLI ARAŞTIRMA ---
+        log_ui(f"🧠 {pair.upper()} için arama stratejisi oluşturuluyor...", "info")
+        
+        # 1. Ajan ne arayacağına karar verir
+        smart_query = await brain.generate_search_query(msg, pair.replace('usdt',''))
+        
+        log_ui(f"🌍 Botun Araması: '{smart_query}'", "info")
+        
+        # 2. Arama yapılır
+        search_results = await perform_research(smart_query)
+        
+        log_ui(f"🔍 Analiz Ediliyor: {pair.upper()} | Değişim: %{stats.get_change(60):.2f}", "info")
+        all_changes = stats.get_all_changes()
+        # 3. Sonuçlarla birlikte analiz edilir
         dec = await brain.analyze_specific(
             news=msg, 
             symbol=pair, 
             price=stats.current_price, 
-            change_1m=stats.get_change(60)
+            changes=all_changes, # <--- ARTIK SÖZLÜK GÖNDERİYORUZ
+            search_context=search_results
         )
-        
         # 5. DATA COLLECTOR (Eğitim için kaydet)
         collector.log_decision(msg, pair, stats.current_price, stats.get_change(60), dec)
 
@@ -369,6 +415,14 @@ async def process_news(msg, source="TELEGRAM"):
             # --- YENİ: TELEGRAM BİLDİRİMİ ---
             # İşlem açıldığı an cebine mesaj gelsin
             asyncio.create_task(send_telegram_alert(full_log))
+
+            dataset_manager.log_trade_entry(
+                symbol=pair,
+                news=msg,
+                price_data=f"Price: {stats.current_price}, 1m Chg: {stats.get_change(60):.2f}%",
+                ai_decision=dec,
+                search_context=search_results if 'search_results' in locals() else ""
+            )
 
             # B. Real Trading
             if REAL_TRADING_ENABLED:

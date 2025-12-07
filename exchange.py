@@ -29,7 +29,7 @@ class PaperExchange:
         return f"🔵 POZİSYON AÇILDI: {symbol.upper()} {side} | Giriş: {price} | Top Point : {tp_pct} | Stop Loss : {sl_pct} | VM : {validity} minutes", "info"
 
     def check_positions(self, symbol, current_price):
-        if symbol not in self.positions: return None, None, None
+        if symbol not in self.positions: return None, None, None, None
         pos = self.positions[symbol]
         pos['current_price'] = current_price
         
@@ -53,9 +53,9 @@ class PaperExchange:
 
         if close_reason:
             log, color = self.close_position(symbol, close_reason, pos['pnl'])
-            return log, color, symbol
+            return log, color, symbol, pos['pnl']
         else:
-            return None, None, None
+            return None, None, None, None
 
     def close_position(self, symbol, reason, pnl):
         pos = self.positions[symbol]

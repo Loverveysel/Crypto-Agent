@@ -6,6 +6,8 @@ import asyncio
 from dotenv import load_dotenv
 from google.genai import types
 
+from utils import search_web_sync
+
 
 class AgentBrain:
     def __init__(self):
@@ -98,48 +100,73 @@ class AgentBrain:
             print(f"❌ [BEYİN HATASI] Analiz başarısız: {e}")
             return {"trades": []}
         
-    async def analyze_specific(self, news, symbol, price, change_1m):
-        """
-        Sadece önceden tespit edilmiş TEK BİR coin için analiz yapar.
-        """
+    async def analyze_specific(self, news, symbol, price, changes, search_context=""):
+        # 1. Önce coinin profilini çek (Cache'den veya Web'den)
+        coin_category = await self.get_coin_profile(symbol)
+    # --- DEBUG LOGU (Bunu konsolda görmek istiyorum) ---
+        print(f"🐛 [DEBUG] {symbol} Kategorisi: '{coin_category}'")
         prompt = f"""
-        DETECTED COIN: {symbol.upper()}
-        PRICE CHANGE (1min): {change_1m}%
-        CURRENT PRICE: {price}
-        NEWS: "{news}"
+        TARGET COIN TO TRADE: {symbol.upper()}
+        TARGET COIN CATEGORY: {coin_category} (TRUST THIS CATEGORY!)
+        
+        MARKET DATA:
+        - Price: {price}
+        - 1m Change: {changes['1m']:.2f}%
+        - 10m Change: {changes['10m']:.2f}%
+        - 1h Change: {changes['1h']:.2f}%
+        - 24h Change: {changes['24h']:.2f}%
+        
+        NEWS SNIPPET: "{news}"
+        RESEARCH CONTEXT: {search_context}
+
+        ACT AS A CYNICAL TRADER. DO NOT BE AN OPTIMIST.
+        
+        CRITICAL RULES::
+        1. IDENTITY CHECK: The news might mention "USDT" or "Stablecoins". DO NOT confuse them with the TARGET COIN ({symbol.upper()}). 
+           - If TARGET COIN is ETH, it is NOT a stablecoin, even if USDT is mentioned.
+        2. RELEVANCE: Does this news specifically affect {symbol.upper()} price?
+           - "Binance Proof of Reserves" is usually NEUTRAL/HOLD unless huge outflow.
+        3. SECTOR HYPE: If CATEGORY is "AI" or "Meme" and news is positive, be more aggressive (Higher Confidence).
+        4. MOMENTUM CHECK (MULTI-TIMEFRAME):
+           - If 1m and 10m are pumping (>3%) -> FOMO Risk. HOLD.
+           - If 24h is DOWN but 1m is UP on Good News -> REVERSAL (Good Long).
+           - If 24h is UP (>10%) and 1m is UP -> OVERBOUGHT (Risky).
         
         YOUR MISSION:
-        1. VALIDATION: Does the news actually mention/imply {symbol.upper()}? If not, ACTION: HOLD.
-        2. ANALYSIS: Analyze sentiment (Positive/Negative).
-        3. MOMENTUM CHECK: 
-           - If news is BULLISH but price already pumped > 3%, risk is high (FOMO). Consider HOLD or strict SL.
-           - If news is BULLISH and price is stable/dipping, it's a good entry.
+        1. VALIDATION: Is the news TRULY about {symbol.upper()}? If it's about "Stablecoins" or "General Market", do NOT trade specific alts like LINK/THE. ACTION: HOLD.
+        2. SENTIMENT ANALYSIS:
+           - "Hacks", "Delisting", "Regulations", "Delayed Launch", "Execs Leaving" -> SHORT.
+           - "Price Crash", "Bear Market", "Outflows" -> SHORT.
+           - "Partnership", "Mainnet Launch", "ETF Approval" -> LONG.
+        3. MOMENTUM CHECK (CRITICAL):
+           - If news is BULLISH but price is DOWN/STABLE -> LONG (Sniper Entry).
+           - If news is BULLISH but price already PUMPED (>2%) -> HOLD (FOMO Trap).
+           - If news is BEARISH but price is UP -> SHORT (Top Short).
+           - If news is BEARISH and price is DUMPING -> HOLD (Panic Sell Trap).
         
         JSON OUTPUT ONLY:
         {{
             "action": "LONG" | "SHORT" | "HOLD",
-            "confidence": <int 0-100>,
+            "confidence": <int>,
             "tp_pct": <float>,
             "sl_pct": <float>,
             "validity_minutes": <int>,
-            "reason": "<Explain logic based on news AND price change>"
+            "reason": "<Explain logic>"
         }}
         """
         try:
-            # Gemini veya Ollama kullanımı (Senin konfigürasyonuna göre)
-            # Burası senin mevcut yapına göre hibrit çalışır
-            if self.use_gemini: # Eğer Gemini aktifse
+            if self.use_gemini:
                 response = await self.gemini_client.generate_content_async(prompt)
                 return json.loads(response.text)
-            else: # Ollama aktifse
+            else:
                 res = await asyncio.to_thread(
                     ollama.chat, 
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': prompt}],
                     format='json', 
+                    options={'temperature': 0.1}
                 )
                 return json.loads(res['message']['content'])
-                
         except Exception as e:
             print(f"[HATA] LLM Analizi: {e}")
             return {"action": "HOLD", "confidence": 0, "reason": "Error"}
@@ -187,3 +214,135 @@ class AgentBrain:
         except Exception as e:
             print(f"[HATA] Sembol Tespiti: {e}")
             return None
+        
+    async def generate_search_query(self, news, symbol):
+        """
+        Haberi analiz eder ve araştırmacı gazeteci gibi sorgu üretir.
+        """
+        # Papağanlığı kırmak için "Reasoning" (Mantık Yürütme) istiyoruz.
+        prompt = f"""
+        ACT AS A CRYPTO INVESTIGATOR.
+        
+        INPUT NEWS: "{news}"
+        TARGET COIN: {symbol.upper()}
+        
+        INSTRUCTIONS:
+        1. Identify the "Unknown Entity" or "Event" in the news (e.g. a startup name, a VC firm, a new protocol).
+        2. IGNORE the coin name ({symbol.upper()}) in the search query. We know the coin. We need to vet the PARTNER.
+        3. Construct a search query to expose scams, low liquidity, or fake news.
+        
+        BAD QUERY: "{symbol} {news}" (Do NOT do this)
+        BAD QUERY: "Mugafi partners with Avalanche" (Too specific)
+        
+        GOOD QUERY: "Mugafi studio funding valuation" (Investigates the partner)
+        GOOD QUERY: "Project XYZ scam allegations" (Investigates risks)
+        
+        OUTPUT FORMAT: Just the search query string. Nothing else.
+        """
+        
+        try:
+            if self.use_gemini:
+                # Gemini'nin ayarlarını bu çağrı için özel olarak değiştiriyoruz
+                # temperature=0.7 -> Yaratıcılığı artırır, papağanlığı azaltır.
+                generation_config = genai.types.GenerationConfig(temperature=0.7) 
+                response = await self.gemini_client.generate_content_async(prompt, generation_config=generation_config)
+                return response.text.strip().replace('"', '')
+            else:
+                res = await asyncio.to_thread(
+                    ollama.chat, 
+                    model=self.ollama_model,
+                    messages=[{'role': 'user', 'content': prompt}],
+                    # Ollama için de sıcaklığı artırıyoruz
+                    options={'temperature': 0.7} 
+                )
+                return res['message']['content'].strip().replace('"', '')
+        except Exception as e:
+            print(f"[HATA] Sorgu Üretme: {e}")
+            return f"{news[:20]} scam check"
+        
+    async def get_coin_profile(self, symbol):
+        """
+        Coinin ne olduğunu (Meme, L1, AI, Stablecoin) hızlıca öğrenir.
+        """
+        sym = symbol.upper().replace('USDT', '')
+        
+        # 1. HIZLI LİSTE (Hardcoded)
+        # En popüler coinleri elle yazalım ki LLM saçmalamasın.
+        known_coins = {
+            'BTC': 'Layer-1 (Store of Value)',
+            'ETH': 'Layer-1 (Smart Contract)',
+            'SOL': 'Layer-1 (High Speed)',
+            'BNB': 'Exchange Token / Layer-1',
+            'XRP': 'Payment / Layer-1',
+            'DOGE': 'Meme Coin',
+            'SHIB': 'Meme Coin',
+            'ADA': 'Layer-1',
+            'AVAX': 'Layer-1',
+            'LINK': 'Oracle (Infrastructure)',
+            'MATIC': 'Layer-2',
+            'UNI': 'DeFi (DEX)',
+            'LDO': 'DeFi (Liquid Staking)',
+            'USDT': 'Stablecoin',
+            'USDC': 'Stablecoin',
+            'FDUSD': 'Stablecoin'
+        }
+        
+        if sym in known_coins:
+            return known_coins[sym]
+
+        # 2. BİLİNMEYEN COINLER İÇİN ARAMA (Cache)
+        if not hasattr(self, 'coin_cache'):
+            self.coin_cache = {}
+        
+        if sym in self.coin_cache:
+            return self.coin_cache[sym]
+        
+        # Hafıza (Cache) - Her seferinde arama yapmasın, bir kere öğrensin yeter
+        if not hasattr(self, 'coin_cache'):
+            self.coin_cache = {}
+        
+        if symbol in self.coin_cache:
+            return self.coin_cache[symbol]
+
+        # Bilmiyorsa Ara
+        query = f"what is {symbol} crypto category sector utility"
+        try:
+            # DuckDuckGo araması (zaten import etmiştin)
+            if self.use_gemini: # Gemini varsa search tool'u kullanabilir veya DDGS
+                 # Hız için yine DDGS kullanalım, Gemini'ye metni verelim
+                 pass 
+            
+            # DDGS senkron olduğu için thread'e atıyoruz
+            search_text = await asyncio.to_thread(search_web_sync, query)
+            
+            # Basit bir özetleme yapalım (LLM ile değil, String işlemiyle hız kazan)
+            # Ama LLM ile yapmak daha garantidir.
+            profile_prompt = f"""
+            DATA: {search_text}
+            
+            TASK: Classify {symbol} into ONE category.
+            OPTIONS: [Layer-1, Layer-2, DeFi, AI, Meme, Gaming, Stablecoin, Exchange Token, Infrastructure]
+            
+            OUTPUT: Just the category name.
+            """
+            
+            if self.use_gemini:
+                resp = await self.gemini_client.generate_content_async(profile_prompt)
+                category = resp.text.strip()
+            else:
+                res = await asyncio.to_thread(
+                    ollama.chat, 
+                    model=self.ollama_model,
+                    messages=[{'role': 'user', 'content': profile_prompt}],
+                    options={'temperature': 0.0}
+                )
+                category = res['message']['content'].strip()
+            
+            # Cache'e kaydet
+            self.coin_cache[symbol] = category
+            print(f"🧬 [PROFİL] {symbol} sınıflandırıldı: {category}")
+            return category
+
+        except Exception as e:
+            print(f"Profil Hatası: {e}")
+            return "Unknown"
