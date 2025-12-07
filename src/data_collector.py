@@ -1,4 +1,5 @@
 # Gerekli import
+import os
 import aiofiles # pip install aiofiles (Asenkron dosya yazma için şart)
 import time 
 import json
@@ -7,7 +8,7 @@ import json
 # ---------------------------------------------------------
 class TrainingDataCollector:
     def __init__(self, filename="fine_tune_dataset.jsonl"):
-        self.filename = filename
+        self.filename = os.path.dirname(__file__) + "/../data/" + filename
         self.pending_events = [] # Karar verildi, sonucu bekleniyor
 
     def log_decision(self, news, pair, initial_price, stats_1m, model_output):

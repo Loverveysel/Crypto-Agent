@@ -1,0 +1,11 @@
+python-binance
+telethon
+websockets
+nicegui
+google-generativeai
+ollama
+python-dotenv
+duckduckgo-search
+aiofiles
+scipy
+motor

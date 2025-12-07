@@ -3,7 +3,7 @@ import os
 
 class DatasetManager:
     def __init__(self, filename="training_dataset.jsonl"):
-        self.filename = filename
+        self.filename = os.path.dirname(__file__) + "/../data/" + filename
         # Açık işlemleri burada tutacağız: { 'BTCUSDT': { 'news': '...', 'input_data': '...', 'ai_response': ... } }
         self.open_trades = {}
 
