@@ -28,7 +28,7 @@ class PaperExchange:
             'expiry_time': expiry_time,
             'validity': validity
         }
-        return f"🔵 POZİSYON AÇILDI: {symbol.upper()} {side} | Giriş: {price} | VM: {validity}m", "info"
+        return f"🔵 POZİSYON AÇILDI: {symbol.upper()} {side} | Giriş: {price} | Top Point : {tp_pct} | Stop Loss : {sl_pct} | VM : {validity} minutes", "info"
 
     def check_positions(self, symbol, current_price):
         if symbol not in self.positions: return None, None, None, 0.0
@@ -40,6 +40,8 @@ class PaperExchange:
             pos['pnl'] = (current_price - pos['entry']) * pos['qty']
         else:
             pos['pnl'] = (pos['entry'] - current_price) * pos['qty']
+
+        print("Time : " , time.time(), "Expiry : ",pos['expiry_time'])
 
         close_reason = None
         if time.time() > pos['expiry_time']:
@@ -58,8 +60,9 @@ class PaperExchange:
         return None, None, None, 0.0
 
     def close_position(self, symbol, reason, pnl):
+        pos = self.positions[symbol]
         self.balance += self.positions[symbol]['margin'] + pnl
         self.total_pnl += pnl
         del self.positions[symbol]
         color = "success" if pnl > 0 else "error"
-        return f"🏁 KAPANDI: {symbol.upper()} ({reason}) | PnL: {pnl:.2f} USDT", color
+        return f"🏁 KAPANDI: {symbol.upper()} ({reason}) | PnL: {pnl:.2f} USDT | Enter Price: {pos['entry']} | Close Price: {pos['current_price']}", color

@@ -7,8 +7,22 @@ import json
 # 5. DATA COLLECTOR (GELECEK İÇİN YATIRIM)
 # ---------------------------------------------------------
 class TrainingDataCollector:
-    def __init__(self, filename="fine_tune_dataset.jsonl"):
-        self.filename = os.path.dirname(__file__) + "/../data/" + filename
+    def __init__(self, filename="data_collection.jsonl"):
+        path = os.path.realpath(__file__)
+
+        # gives the directory where demo.py 
+        # exists
+        dir = os.path.dirname(path)
+
+        # replaces folder name of Sibling_1 to 
+        # Sibling_2 in directory
+        dir = dir.replace('src', 'data')
+
+        # changes the current directory to 
+        # Sibling_2 folder
+        os.chdir(dir)
+
+        self.filename = filename
         self.pending_events = [] # Karar verildi, sonucu bekleniyor
 
     def log_decision(self, news, pair, initial_price, stats_1m, model_output):
