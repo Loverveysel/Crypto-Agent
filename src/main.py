@@ -116,6 +116,7 @@ async def send_telegram_alert(message):
 IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price analysis', 'prediction', 'overview', 'roundup']
 
 async def process_news(msg, source="TELEGRAM"):
+    start_timöe = time.time()
     if not app_state.is_running: return
 
     clean_msg = msg.replace("— link", "").replace("Link:", "")
@@ -133,13 +134,26 @@ async def process_news(msg, source="TELEGRAM"):
     name_map = get_top_100_map()
     search_text = msg_lower
     for name, ticker in name_map.items():
-        if name in msg_lower: search_text += f" {ticker} "
+        if name in msg_lower: search_text += f" {ticker.lower()} "
 
     detected_pairs = []
+    # Yasaklı/Tehlikeli Kelimeler (Ticker ile karışanlar)
+    DANGEROUS_TICKERS = ['NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF']
+    
     for pair in TARGET_PAIRS:
-        symbol = pair.replace('usdt', '')
-        if re.search(r'\b' + symbol + r'\b', search_text):
-            detected_pairs.append(pair)
+        symbol = pair.replace('usdt', '').upper()
+        
+        # Eğer tehlikeli bir ticker ise, sadece $SYMBOL veya TAM İSİM ara
+        if symbol in DANGEROUS_TICKERS:
+            # Örnek: "NEAR" için "$NEAR" veya "NEAR Protocol" ara
+            # Basit regex: sadece kelime değil, bağlam ara
+            pattern = r'(\$'+symbol+r')|('+symbol+r' (Protocol|Network|Chain|Coin|Token))'
+            if re.search(pattern, msg, re.IGNORECASE):
+                detected_pairs.append(pair)
+        else:
+            # Diğerleri için normal arama (Word boundary ile)
+            if re.search(r'\b' + symbol.lower() + r'\b', search_text):
+                detected_pairs.append(pair)
 
     # 2. Fallback (Ajan Tespiti)
     if not detected_pairs:
@@ -229,6 +243,10 @@ async def process_news(msg, source="TELEGRAM"):
             log_ui(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n", "warning")
             log_txt(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n")
             asyncio.create_task(send_telegram_alert(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n"))
+
+    end_time = time.time()
+    print(f"[{source}] Haber İşleme Süresi: {end_time - start_timöe:.2f} saniye.")
+    log_ui(f"[{source}] Haber İşleme Süresi: {end_time - start_timöe:.2f} saniye.", "info")
 # --- LOOPLAR ---
 async def websocket_loop():
     print("[SİSTEM] Websocket Başlatılıyor (Sniper Modu)...")

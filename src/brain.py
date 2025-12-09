@@ -53,6 +53,15 @@ class AgentBrain:
         
         if not self.use_gemini:
             print(f"🧠 [BEYİN] Mod: YEREL OLLAMA ({self.ollama_model})")
+            
+            # --- YENİ: MODEL ISITMA VE KİLİTLEME ---
+            print("🔥 [SİSTEM] Model VRAM'e yükleniyor ve kilitleniyor (Keep-Alive)...")
+            try:
+                # keep_alive=-1 demek "Ben kapatana kadar model hafızada kalsın" demektir.
+                ollama.chat(model=self.ollama_model, messages=[{'role': 'user', 'content': 'hi'}], keep_alive=-1)
+                print("✅ [SİSTEM] Model yüklendi ve hazır!")
+            except Exception as e:
+                print(f"⚠️ Model yükleme uyarısı: {e}")
 
     async def analyze(self, news, available_pairs):
         # Coin listesini string'e çevir
@@ -92,7 +101,8 @@ class AgentBrain:
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': user_prompt}],
                     format='json', 
-                    options={'temperature': 0.1}
+                    options={'temperature': 0.1},
+                    keep_alive=-1 # 5 dakika açık tut
                 )
                 return json.loads(res['message']['content'])
 
@@ -139,6 +149,12 @@ class AgentBrain:
         C. TIME MANAGEMENT:
            - MAX VALIDITY: 30 Minutes. NO EXCEPTIONS.
            - Ideal Validity: 10-15 Minutes.
+           
+        RULES FOR TIMING:
+        - CHECK VERB TENSE: Is the news about something that ALREADY happened ("Sold off", "Dropped", "Plunged")?
+          -> IF YES: The move is likely over. ACTION: HOLD (Don't chase ghosts).
+        - Is the news about something HAPPENING NOW or COMING ("Launching", "Partnering", "Approving")?
+          -> IF YES: ACTION: LONG/SHORT.
         
         JSON OUTPUT ONLY:
         {{
@@ -150,6 +166,9 @@ class AgentBrain:
             "reason": "SHORT because bad news and price weakness. Time limited to 15m."
         }}
         """
+
+        #prices debug
+        print(f"🐛 [DEBUG] Fiyat: {price}, Değişimler: {changes}")
         try:
             if self.use_gemini:
                 response = await self.gemini_client.generate_content_async(prompt)
@@ -160,7 +179,8 @@ class AgentBrain:
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': prompt}],
                     format='json', 
-                    options={'temperature': 0.1}
+                    options={'temperature': 0.1},
+                    keep_alive=-1 # 5 dakika açık tut
                 )
                 return json.loads(res['message']['content'])
         except Exception as e:
@@ -172,18 +192,19 @@ class AgentBrain:
         Regex başarısız olduğunda LLM'den sembol bulmasını ister.
         """
         # Sadece coin listesini string yap (USDT olmadan)
-        coins_str = ", ".join([p.replace('usdt', '').upper() for p in available_pairs])
         
         prompt = f"""
-        TASK: Identify the cryptocurrency symbol in this news.
+        TASK: Identify which cryptocurrency symbol is most impacted by this news.
         NEWS: "{news}"
-        ALLOWED SYMBOLS: [{coins_str}]
         
         RULES:
-        1. If the news talks about "Satoshi" or "Bitcoin", return "BTC".
-        2. If news talks about "Ether", return "ETH".
-        3. Only return a symbol if it exists in ALLOWED SYMBOLS list.
-        4. If no specific coin is found, return null.
+        1.  **IMPACT ANALYSIS:** Determine which specific cryptocurrency's price or sentiment is most likely to be affected by this news.
+        2.  **INFERENCE:**
+            * If the news mentions "Satoshi", "Bitcoin", or general crypto market trends led by Bitcoin, return "BTC".
+            * If the news mentions "Vitalik", "Ether", or Ethereum ecosystem updates, return "ETH".
+            * If the news mentions a project built on a specific chain (e.g., "Jupiter on Solana"), return the chain's token if the project token isn't listed (e.g., "SOL").
+        3.  **CONSTRAINT:** Only return a symbol if it exists in the ALLOWED SYMBOLS list.
+        4.  **NULL:** If no specific coin from the list is impacted, return null.
         
         JSON OUTPUT ONLY:
         {{
@@ -201,7 +222,8 @@ class AgentBrain:
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': prompt}],
                     format='json', 
-                    options={'temperature': 0.0} # Sıfır yaratıcılık
+                    options={'temperature': 0.0, 'num_ctx': 512, 'num_predict': 32} ,
+                    keep_alive=-1 # Sıfır yaratıcılık
                 )
                 res_json = json.loads(res['message']['content'])
             
@@ -249,7 +271,8 @@ class AgentBrain:
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': prompt}],
                     # Ollama için de sıcaklığı artırıyoruz
-                    options={'temperature': 0.7} 
+                    options={'temperature': 0.7, 'num_ctx': 512, 'num_predict': 32} ,
+                    keep_alive=-1 # Sıfır yaratıcılık
                 )
                 return res['message']['content'].strip().replace('"', '')
         except Exception as e:
@@ -300,7 +323,8 @@ class AgentBrain:
                     ollama.chat, 
                     model=self.ollama_model,
                     messages=[{'role': 'user', 'content': profile_prompt}],
-                    options={'temperature': 0.0}
+                    options={'temperature': 0.0,  'num_ctx': 128, 'num_predict': 16},
+                    keep_alive=-1 # Sıfır yaratıcılık
                 )
                 category = res['message']['content'].strip()
             

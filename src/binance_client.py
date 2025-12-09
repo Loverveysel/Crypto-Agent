@@ -17,10 +17,16 @@ class BinanceExecutionEngine:
             for s in info['symbols']:
                 filters = {f['filterType']: f for f in s['filters']}
                 try:
+                    # MIN_NOTIONAL filtresini de çekiyoruz
+                    min_notional = 5.0 # Varsayılan (Altcoinler için genelde 5$)
+                    if 'MIN_NOTIONAL' in filters:
+                        min_notional = float(filters['MIN_NOTIONAL']['notional'])
+                    
                     self.symbol_info[s['symbol'].lower()] = {
                         'stepSize': float(filters['LOT_SIZE']['stepSize']),
                         'tickSize': float(filters['PRICE_FILTER']['tickSize']),
-                        'minQty': float(filters['LOT_SIZE']['minQty'])
+                        'minQty': float(filters['LOT_SIZE']['minQty']),
+                        'minNotional': min_notional # <--- YENİ EKLENDİ
                     }
                 except: continue
             env = "TESTNET" if self.testnet else "MAINNET"
@@ -33,36 +39,65 @@ class BinanceExecutionEngine:
         return int(round(-math.log(size, 10), 0))
 
     def _round_step(self, quantity, step_size):
-        """Miktarı step size'a göre güvenli yuvarlar"""
+        """Miktarı step size'a göre aşağı yuvarlar (Floor)"""
         if step_size == 0: return quantity
         precision = self._get_precision(step_size)
         qty = int(quantity / step_size) * step_size
-        return float(f"{qty:.{precision}f}") # String format ile kesinlik
+        return float(f"{qty:.{precision}f}")
+
+    def _ceil_step(self, quantity, step_size):
+        """Miktarı step size'a göre YUKARI yuvarlar (Ceiling) - Notional için gerekli"""
+        if step_size == 0: return quantity
+        precision = self._get_precision(step_size)
+        qty = math.ceil(quantity / step_size) * step_size
+        return float(f"{qty:.{precision}f}")
 
     def _round_price(self, price, tick_size):
-        """Fiyatı tick size'a göre güvenli yuvarlar"""
+        """Fiyatı tick size'a göre en yakına yuvarlar"""
         if tick_size == 0: return price
         precision = self._get_precision(tick_size)
         price = round(price / tick_size) * tick_size
-        return float(f"{price:.{precision}f}") # String format ile kesinlik
+        return float(f"{price:.{precision}f}")
 
     async def execute_trade(self, symbol, side, amount_usdt, leverage, tp_pct, sl_pct):
         if not self.client: return
         sym = symbol.upper()
+        sym_lower = symbol.lower()
+        
         try:
             # 1. Kaldıraç ve Fiyat
             await self.client.futures_change_leverage(symbol=sym, leverage=leverage)
             ticker = await self.client.futures_symbol_ticker(symbol=sym)
             current_market_price = float(ticker['price'])
             
-            # 2. Miktar Hesapla
+            # 2. Temel Miktar Hesapla
             raw_qty = (amount_usdt * leverage) / current_market_price
-            step_size = self.symbol_info[symbol.lower()]['stepSize']
+            
+            step_size = self.symbol_info[sym_lower]['stepSize']
+            min_qty = self.symbol_info[sym_lower]['minQty']
+            min_notional = self.symbol_info[sym_lower]['minNotional'] # 100 USDT vb.
+            
+            # Yuvarla
             qty = self._round_step(raw_qty, step_size)
             
-            if qty < self.symbol_info[symbol.lower()]['minQty']: 
-                print(f"⚠️ Miktar çok düşük: {qty}")
-                return
+            # --- KONTROL 1: ADET SINIRI ---
+            if qty < min_qty:
+                print(f"⚠️ Miktar ({qty}) min_qty ({min_qty}) altında. Yükseltiliyor.")
+                qty = min_qty
+            
+            # --- KONTROL 2: TUTAR SINIRI (YENİ) ---
+            current_notional_value = qty * current_market_price
+            
+            if current_notional_value < min_notional:
+                print(f"⚠️ Tutar ({current_notional_value:.2f}$) min_notional ({min_notional}$) altında. Zorlanıyor...")
+                
+                # Hedef tutara ulaşmak için gereken miktar
+                required_qty = min_notional / current_market_price
+                
+                # Yukarı yuvarla ki sınırın biraz üstünde olsun (100.01 gibi)
+                qty = self._ceil_step(required_qty * 1.01, step_size) # %1 güvenli pay ekle
+                
+                print(f"✅ Yeni Miktar: {qty} (Tahmini Tutar: {qty * current_market_price:.2f}$)")
 
             # 3. İşlemi Aç
             side_enum = SIDE_BUY if side == 'LONG' else SIDE_SELL
@@ -70,11 +105,9 @@ class BinanceExecutionEngine:
                 symbol=sym, side=side_enum, type=ORDER_TYPE_MARKET, quantity=qty
             )
             
-            # --- KRİTİK DÜZELTME BURADA ---
-            # API'den dönen avgPrice '0.0' olabilir. O durumda ticker fiyatını kullan.
+            # Gerçekleşen fiyatı al
             filled_price = float(order.get('avgPrice', 0.0))
             entry_price = filled_price if filled_price > 0 else current_market_price
-            # -----------------------------
             
             # 4. TP/SL Yerleştir
             await self._place_tp_sl(sym, side, entry_price, tp_pct, sl_pct)
@@ -82,7 +115,6 @@ class BinanceExecutionEngine:
             
         except Exception as e: 
             print(f"❌ [API HATA] {e}")
-            raise e
 
     async def _place_tp_sl(self, symbol, side, entry, tp_pct, sl_pct):
         try:
@@ -97,7 +129,7 @@ class BinanceExecutionEngine:
                 sl_raw = entry * (1 + sl_pct/100)
                 close_side = SIDE_BUY
 
-            # Fiyatlar sıfır olamaz, en az tick size kadar olmalı
+            # Negatif fiyat koruması
             if tp_raw <= tick: tp_raw = entry + (tick * 10) if side=='LONG' else entry - (tick * 10)
             if sl_raw <= tick: sl_raw = entry - (tick * 10) if side=='LONG' else entry + (tick * 10)
 
