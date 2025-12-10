@@ -1,3 +1,4 @@
+from datetime import datetime
 from google import genai
 import json
 import ollama 
@@ -110,15 +111,18 @@ class AgentBrain:
             print(f"❌ [BEYİN HATASI] Analiz başarısız: {e}")
             return {"trades": []}
         
-    async def analyze_specific(self, news, symbol, price, changes, search_context=""):
+    async def analyze_specific(self, news, symbol, price, changes, search_context="", coin_full_name="Unknown"):
         # 1. Önce coinin profilini çek (Cache'den veya Web'den)
         coin_category = await self.get_coin_profile(symbol)
+        current_time_str= datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # --- DEBUG LOGU (Bunu konsolda görmek istiyorum) ---
         print(f"🐛 [DEBUG] {symbol} Kategorisi: '{coin_category}'")
         prompt = f"""
         TARGET COIN: {symbol.upper()}
+        COIN FULL NAME: {coin_full_name}
         OFFICIAL CATEGORY: {coin_category} (TRUST THIS CATEGORY ABSOLUTELY!)
-        
+        CURRENT SYSTEM TIME: {current_time_str} (This is "NOW")
+
         MARKET MOMENTUM:
         - Price: {price}
         - 1m Change: {changes['1m']:.2f}%
@@ -134,7 +138,12 @@ class AgentBrain:
         CRITICAL RULES (PRIORITY 1):
         1. IDENTITY: If TARGET COIN is 'ETH' (Layer-1), do NOT treat it as 'Stablecoin' even if news mentions USDT.
         2. RELEVANCE: Ensure news is specifically about {symbol.upper()}. Ignore generic market news unless it's a massive crash/pump.
-        
+        3. TIME & DATE CHECK (CRUCIAL): 
+         - Compare CURRENT SYSTEM TIME with any date mentions in the NEWS.
+         - If news talks about "Yesterday", "Last Week", or a specific date that is NOT today (e.g., News date is Dec 9, Today is Dec 10) -> THIS IS STALE DATA.
+         - STALE DATA ACTION: HOLD (Do not trade old news).
+         - Exception: Unless it mentions "Upcoming" or "Future" events for that date.
+         
         TRADING LOGIC (PRIORITY 2):
         A. SHORT SIGNALS (Don't be afraid to short):
            - News = "Hack", "Exploit", "Delay", "Scam", "Investigation", "Sell-off".

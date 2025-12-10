@@ -40,7 +40,7 @@ if not API_KEY: raise ValueError("API Key Eksik!")
 
 # DİĞER AYARLAR
 TARGET_CHANNELS = ['cointelegraph', 'wublockchainenglish', 'CryptoRankNews', 'TheBlockNewsLite', 'coindesk', 'arkhamintelligence', 'glassnode'] 
-TARGET_PAIRS = get_top_pairs(50)
+TARGET_PAIRS = get_top_pairs(100)
 BASE_URL = os.getenv('BASE_URL', "wss://stream.binance.com:9443/ws")
 WEBSOCKET_URL = BASE_URL # Parametre yok, saf bağlantı.STREAM_PARAMS = "/".join([f"{pair}@kline_1m" for pair in TARGET_PAIRS] + ["!miniTicker@arr"])
 
@@ -130,15 +130,27 @@ async def process_news(msg, source="TELEGRAM"):
             return
 
     log_ui(f"[{source}] Taranıyor: {msg[:40]}...", "info")    
-    # 1. Regex & Mapping ile Coin Bul
+    # 1. Regex & Mapping ile Coin Bul (KELİME SINIRI KORUMALI)
     name_map = get_top_100_map()
-    search_text = msg_lower
+    
+    # search_text'i msg_lower ile başlatıyoruz
+    search_text = msg_lower 
+    
     for name, ticker in name_map.items():
-        if name in msg_lower: search_text += f" {ticker.lower()} "
+        # name stringi içinde özel karakterler varsa (. gibi) regex'i bozmasın diye escape ediyoruz
+        safe_name = re.escape(name)
+        
+        # \b : Word Boundary (Kelime Sınırı) demektir.
+        # Yani "aster" kelimesinin başında ve sonunda harf olmamalı (boşluk, nokta, virgül veya cümle başı/sonu olabilir).
+        # Bu sayede "forecaster", "master", "disaster" kelimelerinde tetiklenmez.
+        pattern = r'\b' + safe_name + r'\b'
+        
+        if re.search(pattern, msg_lower):
+            search_text += f" {ticker.lower()} "
 
     detected_pairs = []
     # Yasaklı/Tehlikeli Kelimeler (Ticker ile karışanlar)
-    DANGEROUS_TICKERS = ['NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF']
+    DANGEROUS_TICKERS = ['NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', "S", "AI", "AT"]
     
     for pair in TARGET_PAIRS:
         symbol = pair.replace('usdt', '').upper()
@@ -187,8 +199,9 @@ async def process_news(msg, source="TELEGRAM"):
 
         # Karar
         changes = stats.get_all_changes()
-        
-        dec = await brain.analyze_specific(msg, pair, stats.current_price, changes, search_res)
+        symbol_map = get_top_100_map()
+        coin_full_name = symbol_map.get(pair.replace('usdt',''), 'Unknown').title()
+        dec = await brain.analyze_specific(msg, pair, stats.current_price, changes, search_res, coin_full_name)
         
         #for testing
         """dec = {
