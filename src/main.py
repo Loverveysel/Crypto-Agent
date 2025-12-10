@@ -210,7 +210,7 @@ async def process_news(msg, source="TELEGRAM"):
             "tp_pct": 2.0,
             "sl_pct": 1.0,
             "reason": "Demo karar",
-            "validity_minutes": 15
+            "validity_minutes": 0
         }"""
         # Loglama
         collector.log_decision(msg, pair, stats.current_price, str(changes), dec)
@@ -229,7 +229,14 @@ async def process_news(msg, source="TELEGRAM"):
             log_txt(full_log)
             asyncio.create_task(send_telegram_alert(full_log))
             
-            dataset_manager.log_trade_entry(pair, msg, str(changes), dec, search_res)
+            dataset_manager.log_trade_entry(
+                symbol=pair, 
+                news=msg, 
+                price_data=str(changes), 
+                ai_decision=dec, 
+                search_context=search_res,
+                entry_price=stats.current_price # <-- YENİ EKLENDİ
+            )
 
             # 2. DİNAMİK ABONELİK (SUBSCRIBE)
             # Bot işlem açtığı an, bu coinin 1 dakikalık mumlarına abone olur.
@@ -300,19 +307,22 @@ async def websocket_loop():
                                 # Hafızayı güncelle
                                 market_memory[pair].update_candle(price, ts, is_closed)
                                 
-                                # POZİSYON KONTROLÜ
-                                log, color, closed_sym, pnl = exchange.check_positions(pair, price)
+                                # POZİSYON KONTROLÜ (5 Değer Dönüyor Artık)
+                                log, color, closed_sym, pnl, peak_price = exchange.check_positions(pair, price)
+                                
                                 if log:
+                                    # Logu kaydet
                                     log_ui(log, color)
-                                    log_txt(log, "trade_logs.txt")
                                     asyncio.create_task(send_telegram_alert(log))
                                     
                                     if closed_sym:
-                                        dataset_manager.log_trade_exit(closed_sym, pnl, "Closed")
+                                        # Dataset Manager'a Peak Price'ı da gönderiyoruz
+                                        dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
+                                        
                                         if REAL_TRADING_ENABLED:
                                             asyncio.create_task(real_exchange.close_position_market(closed_sym))
                                         
-                                        # İş bitti, yayını kapat
+                                        # Yayını kapat
                                         unsubscribe_msg = {
                                             "method": "UNSUBSCRIBE",
                                             "params": [f"{closed_sym.lower()}@kline_1m"],

@@ -26,42 +26,85 @@ class PaperExchange:
             'tp': tp_price, 'sl': sl_price, 'current_price': price,
             'pnl': 0.0,
             'expiry_time': expiry_time,
-            'validity': validity
+            'validity': validity,
+            'highest_price': price, # Long için en yüksek görülen
+            'lowest_price': price   # Short için en düşük görülen
         }
         return f"🔵 POZİSYON AÇILDI: {symbol.upper()} {side} | Giriş: {price} | Top Point : {tp_pct} | Stop Loss : {sl_pct} | VM : {validity} minutes", "info"
 
     def check_positions(self, symbol, current_price):
-        if symbol not in self.positions: return None, None, None, 0.0
-        
+        if symbol not in self.positions:
+            return None, None, None, 0.0, 0.0 # <-- 5 Değer Dönmeli (Peak Price eklendi)
+
         pos = self.positions[symbol]
-        pos['current_price'] = current_price
+        side = pos['side']
+        entry = pos['entry'] # Senin yapında 'entry_price' değil 'entry'
         
-        if pos['side'] == 'LONG':
-            pos['pnl'] = (current_price - pos['entry']) * pos['qty']
+        # --- 1. REKOR TAKİBİ (YENİ) ---
+        # Long ise en yükseği, Short ise en düşüğü takip et
+        # 'highest_price' ve 'lowest_price' anahtarlarını open_position'da eklediğini varsayıyorum.
+        # Eğer eklemediysen, hata almamak için .get() ile güvenli çekip güncelliyoruz.
+        
+        peak_price = entry # Varsayılan olarak giriş fiyatı
+        
+        if side == 'LONG':
+            # Mevcut en yükseği al, yoksa entry kabul et
+            current_high = pos.get('highest_price', entry)
+            if current_price > current_high:
+                pos['highest_price'] = current_price
+                current_high = current_price
+            peak_price = current_high
+            
+        else: # SHORT
+            # Mevcut en düşüğü al, yoksa entry kabul et
+            current_low = pos.get('lowest_price', entry)
+            if current_price < current_low:
+                pos['lowest_price'] = current_price
+                current_low = current_price
+            peak_price = current_low
+        # -----------------------------
+
+        # PnL Hesaplama (Senin yapına uygun)
+        # Formül: (Fiyat Farkı) * Miktar
+        # Not: Senin 'qty' dediğin şey aslında (Margin * Kaldıraç / Fiyat) yani Coin Adedi.
+        if side == 'LONG':
+            pnl = (current_price - entry) * pos['qty']
         else:
-            pos['pnl'] = (pos['entry'] - current_price) * pos['qty']
+            pnl = (entry - current_price) * pos['qty']
 
-
+        # Çıkış Kontrolleri
         close_reason = None
-        if time.time() > pos['expiry_time']:
-            close_reason = "TIME LIMIT ⏳"
-        elif pos['side'] == 'LONG':
+        
+        # TP/SL Kontrolü
+        if side == 'LONG':
             if current_price >= pos['tp']: close_reason = "TAKE PROFIT 💰"
             elif current_price <= pos['sl']: close_reason = "STOP LOSS 🛑"
         else:
             if current_price <= pos['tp']: close_reason = "TAKE PROFIT 💰"
             elif current_price >= pos['sl']: close_reason = "STOP LOSS 🛑"
 
-        if close_reason:
-            log, color = self.close_position(symbol, close_reason, pos['pnl'])
-            return log, color, symbol, pos['pnl']
-        
-        return None, None, None, 0.0
+        # Süre Kontrolü (Expiry Time ile)
+        # Senin yapında 'expiry_time' (timestamp) var, 'validity' (dakika) var.
+        # expiry_time'ı kontrol ediyoruz.
+        if time.time() > pos['expiry_time']:
+            close_reason = "TIME LIMIT ⏳"
 
+        if close_reason:
+            # Pozisyonu Kapat ve Sil
+            del self.positions[symbol]
+            
+            log_msg = f"🏁 KAPANDI: {symbol.upper()} ({close_reason}) | PnL: {pnl:.2f} USDT | Enter: {entry} | Close: {current_price} | Peak Seen: {peak_price}"
+            color = "success" if pnl > 0 else "error"
+            
+            # --- 5 DEĞER DÖNDÜRÜYORUZ ---
+            # peak_price'ı en sona ekledik
+            return log_msg, color, symbol, pnl, peak_price 
+
+        return None, None, None, 0.0, 0.0
     def close_position(self, symbol, reason, pnl):
         pos = self.positions[symbol]
         self.balance += self.positions[symbol]['margin'] + pnl
         self.total_pnl += pnl
         del self.positions[symbol]
         color = "success" if pnl > 0 else "error"
-        return f"🏁 KAPANDI: {symbol.upper()} ({reason}) | PnL: {pnl:.2f} USDT | Enter Price: {pos['entry']} | Close Price: {pos['current_price']}", color
+        return f"🏁 KAPANDI: {symbol.upper()} ({reason}) | PnL: {pnl:.2f} USDT | Enter Price: {pos['entry']} | Close Price: {pos['current_price']} | Peak Seen: {pos.get('highest_price', pos['entry']) if pos['side'] == 'LONG' else pos.get('lowest_price', pos['entry'])}", color
