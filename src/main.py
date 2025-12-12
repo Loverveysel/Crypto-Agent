@@ -150,7 +150,11 @@ async def process_news(msg, source="TELEGRAM"):
 
     detected_pairs = []
     # Yasaklı/Tehlikeli Kelimeler (Ticker ile karışanlar)
-    DANGEROUS_TICKERS = ['NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', "S", "AI", "AT"]
+    DANGEROUS_TICKERS = {
+        'S', 'THE', 'A', 'I', 'IS', 'TO', 'IT', 'BY', 'ON', 'IN', 'AT', 'OF', 
+        'ME', 'MY', 'UP', 'DO', 'GO', 'OR', 'IF', 'BE', 'AS', 'WE', 'SO',
+        'NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', 'MEME', 'AI'
+    }
     
     for pair in TARGET_PAIRS:
         symbol = pair.replace('usdt', '').upper()
@@ -159,8 +163,7 @@ async def process_news(msg, source="TELEGRAM"):
         if symbol in DANGEROUS_TICKERS:
             # Örnek: "NEAR" için "$NEAR" veya "NEAR Protocol" ara
             # Basit regex: sadece kelime değil, bağlam ara
-            pattern = r'(\$'+symbol+r')|('+symbol+r' (Protocol|Network|Chain|Coin|Token))'
-            if re.search(pattern, msg, re.IGNORECASE):
+                pattern = r'(\$'+symbol+r'\b)|(\b'+symbol+r' (Protocol|Network|Chain|Coin|Token|Foundation|DAO)\b)'            if re.search(pattern, msg, re.IGNORECASE):
                 detected_pairs.append(pair)
         else:
             # Diğerleri için normal arama (Word boundary ile)
