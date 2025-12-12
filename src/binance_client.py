@@ -110,38 +110,72 @@ class BinanceExecutionEngine:
             entry_price = filled_price if filled_price > 0 else current_market_price
             
             # 4. TP/SL Yerleştir
-            await self._place_tp_sl(sym, side, entry_price, tp_pct, sl_pct)
-            print(f"🚀 [API] {sym} {side} @ {entry_price} (Miktar: {qty})")
+            try:
+                await self._place_tp_sl(sym, side, entry_price, tp_pct, sl_pct)
+                print(f"🚀 [API] {sym} {side} @ {entry_price} (Miktar: {qty})")
+            except Exception as e:
+                return "TP/SL Yerleştirme Hatası"
             
+            return "Pozisyon açıldı" # Her şey mükemmel        
         except Exception as e: 
             print(f"❌ [API HATA] {e}")
+            return "Pozisyon Açma Hatası"
+
 
     async def _place_tp_sl(self, symbol, side, entry, tp_pct, sl_pct):
         try:
             tick = self.symbol_info[symbol.lower()]['tickSize']
             
+            # Yön Belirleme
             if side == 'LONG':
                 tp_raw = entry * (1 + tp_pct/100)
                 sl_raw = entry * (1 - sl_pct/100)
-                close_side = SIDE_SELL
-            else:
+                close_side = 'SELL' # String olarak gönderiyoruz
+            else: # SHORT
                 tp_raw = entry * (1 - tp_pct/100)
                 sl_raw = entry * (1 + sl_pct/100)
-                close_side = SIDE_BUY
+                close_side = 'BUY' # String olarak gönderiyoruz
 
-            # Negatif fiyat koruması
+            # Negatif fiyat koruması (Matematiksel Güvenlik)
             if tp_raw <= tick: tp_raw = entry + (tick * 10) if side=='LONG' else entry - (tick * 10)
             if sl_raw <= tick: sl_raw = entry - (tick * 10) if side=='LONG' else entry + (tick * 10)
 
+            # Yuvarlama
             tp = self._round_price(tp_raw, tick)
             sl = self._round_price(sl_raw, tick)
             
-            print(f"🛡️ TP/SL Ayarlanıyor: TP={tp} | SL={sl}")
+            print(f"🛡️ TP/SL Hesaplanıyor: TP={tp} | SL={sl}")
 
-            await self.client.futures_create_order(symbol=symbol, side=close_side, type=FUTURE_ORDER_TYPE_STOP_MARKET, stopPrice=sl, closePosition=True)
-            await self.client.futures_create_order(symbol=symbol, side=close_side, type=FUTURE_ORDER_TYPE_TAKE_PROFIT_MARKET, stopPrice=tp, closePosition=True)
+            # --- STOP LOSS EMRI (STOP_MARKET) ---
+            # closePosition=True dediğimiz için miktar (quantity) göndermiyoruz.
+            # workingType='MARK_PRICE' iğnelerden korur.
+            await self.client.futures_create_order(
+                symbol=symbol, 
+                side=close_side, 
+                type='STOP_MARKET', 
+                stopPrice=sl, 
+                closePosition=True, 
+                workingType='MARK_PRICE',
+                priceProtect=True
+            )
+            
+            # --- TAKE PROFIT EMRI (TAKE_PROFIT_MARKET) ---
+            await self.client.futures_create_order(
+                symbol=symbol, 
+                side=close_side, 
+                type='TAKE_PROFIT_MARKET', 
+                stopPrice=tp, 
+                closePosition=True, 
+                workingType='MARK_PRICE',
+                priceProtect=True
+            )
 
-        except Exception as e: print(f"⚠️ [TP/SL HATASI] {e}")
+            print(f"✅ [API] TP/SL Yerleştirildi ({symbol})")
+
+        except Exception as e: 
+            print(f"⚠️ [TP/SL HATASI] {e}")
+            # Hata detayını görmek için (Opsiyonel):
+            # print(f"Hata Detayı: {e.message if hasattr(e, 'message') else e}")
 
     async def close(self):
         if self.client: await self.client.close_connection()
@@ -168,3 +202,33 @@ class BinanceExecutionEngine:
             ticker = await self.client.futures_ticker(symbol=symbol.upper())
             return data, float(ticker['priceChangePercent'])
         except: return None, 0.0
+    
+    async def get_usdt_balance(self):
+        """
+        Binance Futures hesabındaki güncel USDT bakiyesini çeker.
+        Dönüş: (Toplam Bakiye, Kullanılabilir Bakiye)
+        """
+        if not self.client:
+            print("⚠️ [BAKİYE] API bağlı değil, bakiye çekilemedi.")
+            return 0.0, 0.0
+            
+        try:
+            # Futures hesabındaki tüm varlıkları çek
+            balances = await self.client.futures_account_balance()
+            
+            for asset in balances:
+                if asset['asset'] == 'USDT':
+                    # balance: Toplam Varlık (Pozisyonlar dahil)
+                    # withdrawAvailable: İşlem açılabilir boş bakiye
+                    total_balance = float(asset['balance'])
+                    available_balance = float(asset['withdrawAvailable'])
+                    
+                    print(f"💰 [CÜZDAN] Toplam: {total_balance:.2f} USDT | Boşta: {available_balance:.2f} USDT")
+                    return total_balance, available_balance
+            
+            print("⚠️ [BAKİYE] USDT varlığı bulunamadı.")
+            return 0.0, 0.0
+            
+        except Exception as e:
+            print(f"❌ [BAKİYE HATASI] {e}")
+            return 0.0, 0.0

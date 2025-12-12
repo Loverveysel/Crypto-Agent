@@ -106,6 +106,30 @@ def log_txt(message, filename="trade_logs.txt"):
     with open(filename, 'a', encoding='utf-8') as f:
         f.write(f"\n### {datetime.datetime.now()} ###\n{message}\n##################\n")
 
+async def update_system_balance(last_pnl=0.0):
+    """
+    İşlem sonrası bakiyeyi günceller.
+    - Real Trading Açıksa: Binance'ten en güncel veriyi çeker.
+    - Kapalıysa: Simülasyon bakiyesine PnL'i ekler.
+    """
+    if REAL_TRADING_ENABLED:
+        # Binance'ten gerçek bakiyeyi sor (Hafif gecikme ekleyelim ki borsa işlemi işlesin)
+        await asyncio.sleep(1) 
+        total, available = await real_exchange.get_usdt_balance()
+        
+        if total > 0:
+            old_balance = exchange.balance
+            exchange.balance = total # Simülasyonu gerçekle eşitle
+            
+            diff = total - old_balance
+            icon = "📈" if diff >= 0 else "📉"
+            log_ui(f"{icon} Bakiye Güncellendi: {total:.2f} USDT (Fark: {diff:+.2f})", "info", save_file=True)
+            
+    else:
+        # Sadece Kağıt Üzerinde (Matematiksel Ekleme)
+        exchange.balance += last_pnl
+        log_ui(f"📝 Simülasyon Bakiyesi: {exchange.balance:.2f} USDT (PnL: {last_pnl:+.2f})", "info")
+
 async def send_telegram_alert(message):
     try:
         if telegram_client.is_connected():
@@ -116,7 +140,7 @@ async def send_telegram_alert(message):
 IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price analysis', 'prediction', 'overview', 'roundup']
 
 async def process_news(msg, source="TELEGRAM"):
-    start_timöe = time.time()
+    start_time = time.time()
     if not app_state.is_running: return
 
     clean_msg = msg.replace("— link", "").replace("Link:", "")
@@ -159,14 +183,28 @@ async def process_news(msg, source="TELEGRAM"):
     for pair in TARGET_PAIRS:
         symbol = pair.replace('usdt', '').upper()
         
-        # Eğer tehlikeli bir ticker ise, sadece $SYMBOL veya TAM İSİM ara
+        # SENARYO 1: TEHLİKELİ COIN (S, THE, NEAR...)
         if symbol in DANGEROUS_TICKERS:
-            # Örnek: "NEAR" için "$NEAR" veya "NEAR Protocol" ara
-            # Basit regex: sadece kelime değil, bağlam ara
-                pattern = r'(\$'+symbol+r'\b)|(\b'+symbol+r' (Protocol|Network|Chain|Coin|Token|Foundation|DAO)\b)'            if re.search(pattern, msg, re.IGNORECASE):
+            # KURAL: 
+            # 1. $S (Güvenli)
+            # 2. S Token (Solunda ne harf ne de ' işareti olabilir!)
+            
+            # (?<![\w']) : Negative Lookbehind. 
+            # Anlamı: "Eşleşmenin hemen solunda harf, rakam (\w) veya tırnak (') YOKSA kabul et."
+            # Bu sayede "User's Token" veya "Permits Token" asla eşleşmez.
+            
+            # Açıklayıcı kelimeler
+            suffixes = r'(Coin|Token|Network|Protocol|Chain|Foundation|DAO|Swap|Finance)'
+            
+            pattern = rf"(\${symbol}\b)|((?<![\w'])\b{symbol}\s+{suffixes}\b)"
+            
+            if re.search(pattern, msg, re.IGNORECASE):
+                log_ui(f"🕵️ Hassas Ticker Tespit Edildi: {symbol}", "warning", save_file=True)
                 detected_pairs.append(pair)
+        
+        # SENARYO 2: GÜVENLİ COIN (BTC, ETH, SOL...)
         else:
-            # Diğerleri için normal arama (Word boundary ile)
+            # search_text içinde arıyoruz (mapping eklenmiş hali)
             if re.search(r'\b' + symbol.lower() + r'\b', search_text):
                 detected_pairs.append(pair)
 
@@ -185,7 +223,7 @@ async def process_news(msg, source="TELEGRAM"):
     for pair in detected_pairs:
         stats = market_memory[pair]
         
-        # Backfill
+        
         if stats.current_price == 0:
             log_ui(f"⚠️ {pair} Backfill yapılıyor...", "warning")
             hist_data, chg_24h = await real_exchange.fetch_missing_data(pair)
@@ -218,58 +256,99 @@ async def process_news(msg, source="TELEGRAM"):
         # Loglama
         collector.log_decision(msg, pair, stats.current_price, str(changes), dec)
         
-        if dec['confidence'] > 75 and dec['action'] in ['LONG', 'SHORT']:
-            log, color = exchange.open_position(
-                pair, dec['action'], stats.current_price, 
-                FIXED_TRADE_AMOUNT, LEVERAGE, dec['tp_pct'], dec['sl_pct'], 
-                app_state, dec.get('validity_minutes', 15)
-            )
+        if dec['confidence'] >= 75 and dec['action'] in ['LONG', 'SHORT']:
             
-            print("Top and Stop Price:", dec['tp_pct'], " | ", dec['sl_pct'])
+            # Değişkenleri hazırla
+            trade_amount = FIXED_TRADE_AMOUNT
+            leverage = LEVERAGE
+            # TP/SL oranlarını karardan al (yoksa varsayılanı kullan)
+            tp_pct = dec.get('tp_pct', 2.0)
+            sl_pct = dec.get('sl_pct', 1.0)
+            validity = dec.get('validity_minutes', 15)
 
-            full_log = f"{log}\nSrc: {source}\nReason: {dec.get('reason')}\nNews: {msg}\n"
-            log_ui(full_log, color)
-            log_txt(full_log)
-            asyncio.create_task(send_telegram_alert(full_log))
+            # --- SAVAŞ PLANI: ÖNCE BINANCE ---
+            can_open_paper_trade = False # Kapı kapalı
             
-            dataset_manager.log_trade_entry(
-                symbol=pair, 
-                news=msg, 
-                price_data=str(changes), 
-                ai_decision=dec, 
-                search_context=search_res,
-                entry_price=stats.current_price # <-- YENİ EKLENDİ
-            )
-
-            # 2. DİNAMİK ABONELİK (SUBSCRIBE)
-            # Bot işlem açtığı an, bu coinin 1 dakikalık mumlarına abone olur.
-            subscribe_msg = {
-                "method": "SUBSCRIBE",
-                "params": [f"{pair.lower()}@kline_1m"],
-                "id": int(time.time())
-            }
-            # Kuyruğa at, websocket_loop bunu görüp gönderecek
-            await stream_command_queue.put(subscribe_msg)
-
             if REAL_TRADING_ENABLED:
-                env_lbl = "TESTNET" if IS_TESTNET else "MAINNET"
-                log_ui(f"🚀 {env_lbl} API Emri: {pair}", "error")
-                try:
-                    asyncio.create_task(real_exchange.execute_trade(
-                        pair, dec['action'], FIXED_TRADE_AMOUNT, LEVERAGE, 
-                        dec['tp_pct'], dec['sl_pct']
-                    ))
-                except Exception as e:
-                    log_ui(f"API Emri Hatası: {e}", "error")
-                    exchange.close_position(pair.replace('usdt', ''), "API ERROR", 0.0)
+                # 1. GERÇEK İŞLEMİ DENE (Await ile bekle!)
+                api_result = await real_exchange.execute_trade(
+                    pair, dec['action'], trade_amount, leverage, tp_pct, sl_pct
+                )
+                
+                # 2. SONUCU KONTROL ET
+                if api_result == "Pozisyon Açma Hatası":
+                    # Kritik hata: Binance reddetti. Simülasyonu da açma!
+                    log_ui(f"❌ Binance işlemi reddetti: {pair.upper()}. Simülasyon iptal.", "error", save_file=True)
+                    can_open_paper_trade = False
+                    
+                elif api_result == "TP/SL Yerleştirme Hatası":
+                    # Yarı başarılı: Pozisyon açık ama TP/SL yok.
+                    # Simülasyonu aç, bot zaten fiyatı takip edip kapatacak.
+                    log_ui(f"⚠️ Binance TP/SL hatası: {pair.upper()}. Bot manuel takip edecek.", "warning", save_file=True)
+                    can_open_paper_trade = True
+                    
+                elif api_result == "Pozisyon açıldı":
+                    # Başarılı
+                    can_open_paper_trade = True
+                    
+                elif api_result == "Bağlantı Yok":
+                     log_ui("⚠️ API Bağlı değil. Sadece Paper Trading yapılıyor.", "warning")
+                     can_open_paper_trade = True # API yoksa test için açsın mı? Karar senin. (Burada açsın dedim)
+
+            else:
+                # Gerçek işlem kapalıysa direkt simülasyonu aç
+                can_open_paper_trade = True
+
+            # --- 3. SİMÜLASYON (KAYIT) İŞLEMİ ---
+            if can_open_paper_trade:
+                # Paper Trading motorunda pozisyonu aç (Loglama ve takip için şart)
+                log, color = exchange.open_position(
+                    symbol=pair, 
+                    side=dec['action'], 
+                    entry_price=stats.current_price, # API'den dönen gerçek fiyatı buraya verebiliriz aslında ama şimdilik böyle kalsın
+                    tp_pct=tp_pct, 
+                    sl_pct=sl_pct, 
+                    amount=trade_amount, 
+                    leverage=leverage, 
+                    validity_minutes=validity,
+                    reason=dec.get('reason', 'N/A'),
+                    confidence=dec['confidence']
+                )
+                
+                # Detaylı Log
+                full_log = log + f'\nSrc: {source}\nReason: {dec.get("reason")}\nNews: {msg}'
+                log_ui(full_log, color, save_file=True)
+                
+                # Dataset'e kaydet (Eğitim için)
+                dataset_manager.log_trade_entry(
+                    symbol=pair, 
+                    news=msg, 
+                    price_data=str(changes), 
+                    ai_decision=dec, 
+                    search_context= search_text,
+                    entry_price=stats.current_price
+                )
+                
+                # Telegram Bildirimi
+                asyncio.create_task(send_telegram_alert(full_log))
+
+                # Websocket Stream'i Başlat (Fiyat takibi için)
+                subscribe_msg = {
+                    "method": "SUBSCRIBE",
+                    "params": [f"{pair.lower()}@kline_1m"],
+                    "id": int(time.time())
+                }
+                await stream_command_queue.put(subscribe_msg)
+        
         else:
-            log_ui(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n", "warning")
-            log_txt(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n")
-            asyncio.create_task(send_telegram_alert(f"🛑 Pas: {pair} | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}\n"))
+            # Pas geçilen işlem (Aynı kalacak)
+            log = f"🛑 Pas: {pair.upper()} ({coin_full_name}) | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}"
+            log_ui(log, "warning", save_file=True)
 
     end_time = time.time()
-    print(f"[{source}] Haber İşleme Süresi: {end_time - start_timöe:.2f} saniye.")
-    log_ui(f"[{source}] Haber İşleme Süresi: {end_time - start_timöe:.2f} saniye.", "info")
+    print(f"[{source}] Haber İşleme Süresi: {end_time - start_time:.2f} saniye.")
+    log_ui(f"[{source}] Haber İşleme Süresi: {end_time - start_time:.2f} saniye.", "info")
+
 # --- LOOPLAR ---
 async def websocket_loop():
     print("[SİSTEM] Websocket Başlatılıyor (Sniper Modu)...")
@@ -324,7 +403,7 @@ async def websocket_loop():
                                         
                                         if REAL_TRADING_ENABLED:
                                             asyncio.create_task(real_exchange.close_position_market(closed_sym))
-                                        
+                                            
                                         # Yayını kapat
                                         unsubscribe_msg = {
                                             "method": "UNSUBSCRIBE",
@@ -332,6 +411,8 @@ async def websocket_loop():
                                             "id": int(time.time())
                                         }
                                         await stream_command_queue.put(unsubscribe_msg)
+
+                                        asyncio.create_task(update_system_balance(last_pnl=pnl))
 
                             # BURADA ARTIK 'elif list' YOK.
                             # 'P' hatası veren kısım çöpe atıldı.
@@ -363,7 +444,28 @@ async def collector_loop():
         if curr_prices: await collector.check_outcomes(curr_prices)
 
 async def start_tasks():
-    await real_exchange.connect()
+    # 1. API Bağlantısı
+    if REAL_TRADING_ENABLED:
+        await real_exchange.connect()
+        
+        # --- YENİ: GERÇEK BAKİYEYİ ÇEK VE SİSTEMİ GÜNCELLE ---
+        real_total, real_available = await real_exchange.get_usdt_balance()
+        
+        if real_total > 0:
+            # Simülasyon bakiyesini gerçek bakiye ile eşitle
+            exchange.balance = real_total
+            exchange.initial_balance = real_total
+            
+            # Global ayarı da güncelle (Opsiyonel ama iyi olur)
+            STARTING_BALANCE = real_total
+            
+            log_ui(f"✅ Bakiye Eşitlendi: {real_total:.2f} USDT (Kullanılabilir: {real_available:.2f})", "success", save_file=True)
+        else:
+            log_ui("⚠️ Gerçek bakiye çekilemedi veya 0. Varsayılan kullanılıyor.", "warning")
+        # -----------------------------------------------------
+
+    else:
+        log_ui("⚠️ Gerçek İşlem Kapalı (Paper Trading Modu)", "warning")
     asyncio.create_task(websocket_loop())
     asyncio.create_task(telegram_loop())
     asyncio.create_task(collector_loop())
