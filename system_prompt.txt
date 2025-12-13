@@ -5,7 +5,7 @@ FROM gemma3:12b
 PARAMETER temperature 0.0
 
 # Context penceresi
-PARAMETER num_ctx 1024
+PARAMETER num_ctx 2048
 
 # Cevap uzunluğu kısıtlaması (Sadece JSON)
 PARAMETER num_predict 256
