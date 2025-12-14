@@ -49,7 +49,7 @@ ctx.real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTN
 ctx.collector = TrainingDataCollector()
 ctx.dataset_manager = DatasetManager()
 ctx.telegram_client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)
-ctx.stream_command_queue = asyncio.Queue()
+ctx.stream_command_queue = None
 ctx.news_memory = NewsMemory()
 
 # 2. Logger Wrapper
@@ -73,6 +73,7 @@ ctx.log_ui = log_ui_wrapper
 
 # --- STARTUP TASKS ---
 async def start_tasks():
+    ctx.stream_command_queue = asyncio.Queue()
     # 1. API Connection & Sync
     if REAL_TRADING_ENABLED:
         await ctx.real_exchange.connect()
