@@ -69,5 +69,5 @@ IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price ana
 DANGEROUS_TICKERS = {
     'S', 'THE', 'A', 'I', 'IS', 'TO', 'IT', 'BY', 'ON', 'IN', 'AT', 'OF', 
     'ME', 'MY', 'UP', 'DO', 'GO', 'OR', 'IF', 'BE', 'AS', 'WE', 'SO',
-    'NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', 'MEME', 'AI'
+    'NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', 'MEME', 'AI', 'MOVE'
 }
