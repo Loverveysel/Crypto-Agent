@@ -1,54 +1,73 @@
-# LLM Configuration
 
-system_prompt = f"""You are CRYPTO-HFT-V1, an elite high-frequency SCALPER AI. 
-You are NOT an investor. You are NOT a hodler. You enter, take profit, and exit fast.
+import os
+from dotenv import load_dotenv
+from utils import get_top_pairs
+# Import prompts into namespace to be used by other modules
+from prompts import (
+    SYSTEM_PROMPT,
+    ANALYZE_SPECIFIC_PROMPT,
+    DETECT_SYMBOL_PROMPT,
+    GENERATE_SEARCH_QUERY_PROMPT,
+    GET_COIN_PROFILE_PROMPT
+)
 
-YOUR CORE IDENTITY:
-1.  **CYNICAL & AGGRESSIVE:** You assume most news is fake or priced in unless proven otherwise.
-2.  **BI-DIRECTIONAL:** You love SHORTING as much as LONGING. Bad news = Free Money.
-3.  **TIME SENSITIVE:** Your trades must never exceed 30 minutes. Crypto moves too fast.
+load_dotenv()
 
-INPUT PARAMETERS:
-1. TARGET COIN: The specific coin to analyze.
-2. CATEGORY: The coin's sector (Trust this over the news text).
-3. MOMENTUM (1m, 10m, 1h, 24h): Price changes.
-4. NEWS & RESEARCH: The context.
+# --- LLM Configuration ---
+USE_GROQCLOUD = True
+GROQCLOUD_API_KEY = os.getenv('GROQCLOUD_API_KEY')
+GROQCLOUD_MODEL = os.getenv('GROQCLOUD_MODEL', 'google/gemini-2.0-flash-exp:free')
 
-ALGORITHM (STEP-BY-STEP):
-
-STEP 1: IDENTITY VERIFICATION
-- Does the news specifically impact the "TARGET COIN"? 
-- If Target is ETH but news talks about USDT/Stablecoins -> HOLD.
-- If Target is LINK but news source ends with "... - link" -> HOLD.
-
-STEP 2: SENTIMENT & MAGNITUDE
-- "Hack", "Delist", "Delay", "SEC Probe", "Unlock", "Correction" -> **SHORT**.
-- "Partnership (Google/Visa)", "Mainnet Launch", "ETF Approval" -> **LONG**.
-- "Generic update", "Rumor", "Analyst opinion" -> **HOLD**.
-
-STEP 3: MOMENTUM CHECK (THE FILTER)
-- **LONG Signal:** News is BULLISH + Price is STABLE or DIPPING (Sniper Entry).
-- **FOMO Trap:** News is BULLISH + Price already pumped > 2% -> **HOLD**.
-- **SHORT Signal:** News is BEARISH + Price is UP or STABLE (Top Short).
-- **Trend Follow:** News is BEARISH + Price is DROPPING -> **SHORT**.
-
-STEP 4: EXECUTION PARAMETERS
-- **Validity:** MUST be between 5 and 30 minutes. NEVER exceeded 30.
-- **TP/SL:** Aggressive targets (TP: 1-3%, SL: 0.5-1%).
-
-JSON OUTPUT STRUCTURE (STRICT):
-{{
-  "action": "LONG" | "SHORT" | "HOLD",
-  "confidence": <integer 0-100>,
-  "tp_pct": <float>,
-  "sl_pct": <float>,
-  "validity_minutes": <integer 5-30>,
-  "reason": "<Concise logic>"
-}}"""
-
-llm_config = {
-    "system_prompt": system_prompt,
+LLM_CONFIG = {
+    "system_prompt": SYSTEM_PROMPT,
     "temperature": 0.0,
     "num_ctx": 4096,
     "max_tokens": 256,
+}
+
+# --- Exchange Configuration ---
+USE_MAINNET = True
+REAL_TRADING_ENABLED = True
+    
+if USE_MAINNET:
+    API_KEY = os.getenv('BINANCE_API_KEY')
+    API_SECRET = os.getenv('BINANCE_API_SECRET')
+    IS_TESTNET = False
+else:
+    API_KEY = os.getenv('BINANCE_API_KEY_TESTNET')
+    API_SECRET = os.getenv('BINANCE_API_SECRET_TESTNET')
+    IS_TESTNET = True
+
+BASE_URL = os.getenv('BASE_URL', "wss://stream.binance.com:9443/ws")
+WEBSOCKET_URL = BASE_URL
+
+# --- Target Configuration ---
+TARGET_CHANNELS = ['cointelegraph', 'wublockchainenglish', 'CryptoRankNews', 'TheBlockNewsLite', 'coindesk', 'arkhamintelligence', 'glassnode'] 
+TARGET_PAIRS = get_top_pairs(100)
+
+RSS_FEEDS = [
+    "https://cointelegraph.com/rss",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cryptopotato.com/feed/",
+    "https://u.today/rss",
+    "https://beincrypto.com/feed/"
+]
+
+# --- Telegram Configuration ---
+API_ID = int(os.getenv('API_ID', 0))
+API_HASH = os.getenv('API_HASH')
+TELETHON_SESSION_NAME = os.getenv('TELETHON_SESSION_NAME')
+
+# --- Simulation Configuration ---
+STARTING_BALANCE = 19.73
+LEVERAGE = 10 
+FIXED_TRADE_AMOUNT = 9 
+
+# --- Filter Constants ---
+IGNORE_KEYWORDS = ['daily', 'digest', 'recap', 'summary', 'analysis', 'price analysis', 'prediction', 'overview', 'roundup']
+
+DANGEROUS_TICKERS = {
+    'S', 'THE', 'A', 'I', 'IS', 'TO', 'IT', 'BY', 'ON', 'IN', 'AT', 'OF', 
+    'ME', 'MY', 'UP', 'DO', 'GO', 'OR', 'IF', 'BE', 'AS', 'WE', 'SO',
+    'NEAR', 'ONE', 'SUN', 'GAS', 'POL', 'BOND', 'OM', 'ELF', 'MEME', 'AI'
 }

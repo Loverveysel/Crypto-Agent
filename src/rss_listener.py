@@ -1,15 +1,7 @@
 import feedparser
 import asyncio
 import time
-
-# Takip edilecek RSS Kaynakları (Kaliteli olanlar)
-RSS_FEEDS = [
-    "https://cointelegraph.com/rss",
-    "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    "https://cryptopotato.com/feed/",
-    "https://u.today/rss",
-    "https://beincrypto.com/feed/"
-]
+from config import RSS_FEEDS
 
 class RSSMonitor:
     def __init__(self, callback_func):
@@ -26,6 +18,13 @@ class RSSMonitor:
                 link = entry.link
                 title = entry.title
                 summary = getattr(entry, 'summary', '')
+
+                if hasattr(entry, 'published_parsed'):
+                    published_time = time.mktime(entry.published_parsed)
+                    current_time = time.time()
+                    # 2 saatten (7200 sn) eski haberleri direkt çöpe at
+                    if current_time - published_time > 60:
+                        continue
                 
                 # Eğer bu linki daha önce görmediysek
                 if link not in self.seen_links:
