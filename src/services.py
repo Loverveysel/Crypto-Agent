@@ -42,15 +42,18 @@ async def send_telegram_alert(ctx, message):
     try:
         # Önce bağlı mı diye bak, değilse bağlanmayı dene
         if not ctx.telegram_client.is_connected():
+            print("❌ TELEGRAM UYARISI: Bağlantı yok, bağlanmayı dene...")
             await ctx.telegram_client.connect()
         
         # Yetki kontrolü (Session dosyası geçerli mi?)
         if not await ctx.telegram_client.is_user_authorized():
             ctx.log_ui("❌ TELEGRAM UYARISI: Oturum yetkisi yok (Session geçersiz).", "error")
+            print("❌ TELEGRAM UYARISI: Oturum yetkisi yok (Session geçersiz).")
             return
 
         # Mesajı gönder
         await ctx.telegram_client.send_message('me', f"🤖 **BOT ALERT**\n{message}")
+        print("✅ TELEGRAM UYARISI: Mesaj gönderildi.")
 
     except Exception as e:
         # Hatayı gizleme, YÜZÜME VUR!
