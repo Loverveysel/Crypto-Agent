@@ -31,6 +31,8 @@ def get_top_pairs(limit=50):
 # TARGET_PAIRS = get_top_pairs(100)  <-- Bunu yaparsan otomatik olur.
 
 
+# src/utils.py içine bu güncellemeyi yap
+
 def get_top_100_map():
     url = "https://api.coingecko.com/api/v3/coins/markets"
     params = {
@@ -45,18 +47,27 @@ def get_top_100_map():
         response = requests.get(url, params=params)
         data = response.json()
         
-        # Dinamik name_map oluşturuluyor
-        # name (küçük harf) -> symbol (küçük harf)
-        name_map = {coin['name'].lower(): coin['symbol'].lower() for coin in data}
-        
-        # Bazı özel durumlar için (API'dan gelen isimler uzun olabilir) manuel override ekleyebilirsin
-        # Ancak temel liste API'dan gelmeli.
-        return name_map
+        # ARTIK SADECE İSİM DEĞİL, MARKET CAP DE TUTUYORUZ
+        # { 'bitcoin': {'symbol': 'btc', 'cap': 1000000000}, ... }
+        coin_data = {}
+        for coin in data:
+            coin_data[coin['name'].lower()] = {
+                'symbol': coin['symbol'].lower(),
+                'cap': coin['market_cap'] if coin['market_cap'] else 0
+            }
+            # Sembol ile de erişebilmek için (örneğin 'btc' -> cap)
+            coin_data[coin['symbol'].lower()] = {
+                'symbol': coin['symbol'].lower(),
+                'cap': coin['market_cap'] if coin['market_cap'] else 0,
+                'name': coin['name']
+            }
+            
+        return coin_data
 
     except Exception as e:
         print(f"Hata oluştu: {e}")
         return {}
-
+        
 def search_web_sync(query):
     """DuckDuckGo üzerinde senkron arama yapar (Thread içinde çalışacak)"""
     try:

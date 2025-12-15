@@ -31,6 +31,7 @@ STEP 3: MOMENTUM CHECK (THE FILTER)
 - **FOMO Trap:** News is BULLISH + Price already pumped > 2% -> **HOLD**.
 - **SHORT Signal:** News is BEARISH + Price is UP or STABLE (Top Short).
 - **Trend Follow:** News is BEARISH + Price is DROPPING -> **SHORT**.
+- **TRAP WARNING:** If News is "Record Breaking/Milestone" AND Price Change (24h) > 5% -> ACTION: HOLD (Priced In / Sell the News risk).
 
 STEP 4: EXECUTION PARAMETERS
 - **Validity:** MUST be between 5 and 30 minutes. NEVER exceeded 30.
@@ -50,9 +51,17 @@ JSON OUTPUT STRUCTURE (STRICT):
 ANALYZE_SPECIFIC_PROMPT = """
         TARGET COIN: {symbol}
         COIN FULL NAME: {coin_full_name}
+        MARKET CAP: {market_cap_str} (CRITICAL CONTEXT)
         OFFICIAL CATEGORY: {coin_category} (TRUST THIS CATEGORY ABSOLUTELY!)
         CURRENT SYSTEM TIME: {current_time_str} (This is "NOW")
 
+        TECHNICAL CONTEXT (CRITICAL):
+        - PRICE: {price}
+        - RSI (14m): {rsi_val:.1f} (Over 75 = Overbought, Under 25 = Oversold)
+        - BTC TREND (1h): {btc_trend:.2f}% (Market Direction)
+        - 24h VOLUME: {volume_24h} (Low < $50M = Fake Moves, High > $500M = Valid Trend)
+        - FUNDING RATE: {funding_rate:.4f}% (High Positive > 0.02% = Long Squeeze Risk)
+        
         MARKET MOMENTUM:
         - Price: {price}
         - 1m Change: {change_1m:.2f}%
@@ -73,7 +82,10 @@ ANALYZE_SPECIFIC_PROMPT = """
          - If news talks about "Yesterday", "Last Week", or a specific date that is NOT today (e.g., News date is Dec 9, Today is Dec 10) -> THIS IS STALE DATA.
          - STALE DATA ACTION: HOLD (Do not trade old news).
          - Exception: Unless it mentions "Upcoming" or "Future" events for that date.
-         
+        4. DUPLICATE NARRATIVE CHECK: 
+         - Is this news talking about an event (e.g. JPMorgan/Ethereum) that happened hours ago? 
+         - IF YES -> ACTION: HOLD (Do not trade recycled news).
+        
         TRADING LOGIC (PRIORITY 2):
         A. SHORT SIGNALS (Don't be afraid to short):
            - News = "Hack", "Exploit", "Delay", "Scam", "Investigation", "Sell-off".
@@ -95,6 +107,20 @@ ANALYZE_SPECIFIC_PROMPT = """
         - Is the news about something HAPPENING NOW or COMING ("Launching", "Partnering", "Approving")?
           -> IF YES: ACTION: LONG/SHORT.
         
+        ALGORITHM FOR IMPACT ANALYSIS:
+        1. VOLUME CHECK:
+           - IF Volume is "Unknown" or < $10M -> ACTION: HOLD (Not enough liquidity, trap risk).
+           - IF Price Pumps but Volume is Low -> FAKE PUMP (HOLD/SHORT).
+        
+        2. FUNDING RATE TRAP:
+           - IF Funding Rate > 0.03% (Crowded Longs) AND News is "Good" -> TRAP WARNING (Long Squeeze likely). ACTION: HOLD or SCALP SHORT.
+           - IF Funding Rate < -0.03% (Crowded Shorts) AND News is "Bad" -> TRAP WARNING (Short Squeeze likely). ACTION: HOLD.
+
+        3. TECHNICAL CONFLUENCE:
+           - RSI > 75 + High Funding -> DO NOT LONG.
+           - RSI < 25 + Negative Funding -> DO NOT SHORT.
+           - BTC Dumping (-1%+) -> IGNORE BULLISH NEWS on Alts.
+           
         JSON OUTPUT ONLY:
         {{
             "action": "LONG" | "SHORT" | "HOLD",

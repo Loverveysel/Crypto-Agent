@@ -92,7 +92,7 @@ async def start_tasks():
         ctx.log_ui("⚠️ Gerçek İşlem Kapalı (Paper Trading Modu)", "warning")
     
     # 2. Launch Loops
-    asyncio.create_task(services.rss_loop(ctx))
+    #asyncio.create_task(services.rss_loop(ctx)) # RSS Loopü devre dışı bırakıldı
     asyncio.create_task(services.websocket_loop(ctx))
     asyncio.create_task(services.telegram_loop(ctx))
     asyncio.create_task(services.collector_loop(ctx))

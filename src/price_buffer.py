@@ -59,3 +59,20 @@ class PriceBuffer:
             "1h": self.get_change(60),
             "24h": self.change_24h
         }
+
+    def calculate_rsi(self, period=14):
+        if len(self.candles) < period + 1: return 50.0 # Veri yoksa nötr
+        
+        # Kapanış fiyatlarını al
+        closes = [c[1] for c in self.candles]
+        
+        deltas = [closes[i+1] - closes[i] for i in range(len(closes)-1)]
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        
+        if avg_loss == 0: return 100.0
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))

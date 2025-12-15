@@ -119,7 +119,7 @@ class AgentBrain:
             print(f"❌ [ERROR] LLM Request Failed: {e}")
             return None
 
-    async def analyze_specific(self, news, symbol, price, changes, search_context="", coin_full_name="Unknown"):
+    async def analyze_specific(self, news, symbol, price, changes, search_context="", coin_full_name="Unknown", market_cap_str="", rsi_val=0, btc_trend=0, volume_24h="", funding_rate=0):
         # 1. Profile Info
         await self._wait_for_rate_limit()
         coin_category = await self.get_coin_profile(symbol)
@@ -131,7 +131,12 @@ class AgentBrain:
         prompt = ANALYZE_SPECIFIC_PROMPT.format(
             symbol=symbol.upper(),
             coin_full_name=coin_full_name,
+            market_cap_str=market_cap_str,
             coin_category=coin_category,
+            rsi_val=rsi_val,
+            btc_trend=btc_trend,
+            volume_24h=volume_24h,
+            funding_rate=funding_rate,
             current_time_str=current_time_str,
             price=price,
             change_1m=changes['1m'],

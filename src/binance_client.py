@@ -234,3 +234,32 @@ class BinanceExecutionEngine:
         except Exception as e:
             print(f"❌ [BAKİYE HATASI] {e}")
             return 0.0, 0.0
+
+    async def get_extended_metrics(self, symbol):
+        """
+        Gelişmiş analiz için 24h Hacim ve Fonlama Oranını çeker.
+        """
+        if not self.client: return "Unknown", 0.0
+
+        try:
+            # 1. 24 Saatlik Veriler (Hacim için)
+            # quoteVolume = USDT cinsinden hacim
+            ticker_stats = await self.client.futures_ticker(symbol=symbol.upper())
+            volume_usdt = float(ticker_stats.get('quoteVolume', 0))
+            
+            # Formatla (Milyar/Milyon)
+            if volume_usdt > 1_000_000_000:
+                vol_str = f"${volume_usdt / 1_000_000_000:.2f}B"
+            else:
+                vol_str = f"${volume_usdt / 1_000_000:.2f}M"
+
+            # 2. Fonlama Oranı (Funding Rate)
+            # premiumIndex endpoint'i anlık fonlamayı verir
+            premium_index = await self.client.futures_mark_price(symbol=symbol.upper())
+            funding_rate = float(premium_index.get('lastFundingRate', 0)) * 100 # Yüzdeye çevir
+            
+            return vol_str, funding_rate
+
+        except Exception as e:
+            print(f"⚠️ [METRİK HATA] {symbol}: {e}")
+            return "Unknown", 0.0

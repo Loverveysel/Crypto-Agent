@@ -40,9 +40,22 @@ async def update_system_balance(ctx, last_pnl=0.0):
 
 async def send_telegram_alert(ctx, message):
     try:
-        if ctx.telegram_client.is_connected():
-            await ctx.telegram_client.send_message('me', f"🤖 **BOT ALERT**\n{message}")
-    except: pass
+        # Önce bağlı mı diye bak, değilse bağlanmayı dene
+        if not ctx.telegram_client.is_connected():
+            await ctx.telegram_client.connect()
+        
+        # Yetki kontrolü (Session dosyası geçerli mi?)
+        if not await ctx.telegram_client.is_user_authorized():
+            ctx.log_ui("❌ TELEGRAM UYARISI: Oturum yetkisi yok (Session geçersiz).", "error")
+            return
+
+        # Mesajı gönder
+        await ctx.telegram_client.send_message('me', f"🤖 **BOT ALERT**\n{message}")
+
+    except Exception as e:
+        # Hatayı gizleme, YÜZÜME VUR!
+        print(f"❌ [TELEGRAM SEND ERROR]: {e}")
+        ctx.log_ui(f"❌ Telegram Gönderme Hatası: {e}", "error")
 
 async def process_news(msg, source, ctx):
     start_time = time.time()
@@ -67,11 +80,20 @@ async def process_news(msg, source, ctx):
     
     name_map = get_top_100_map()
     search_text = msg_lower 
-    for name, ticker in name_map.items():
+    
+    for name, data in name_map.items():
+        # Veri artık sözlük olduğu için önce tipini kontrol et
+        if isinstance(data, dict):
+            symbol = data.get('symbol', '').lower()
+        else:
+            # Eski formatta string gelirse diye güvenlik önlemi
+            symbol = str(data).lower()
+
         safe_name = re.escape(name)
         pattern = r'\b' + safe_name + r'\b'
+        
         if re.search(pattern, msg_lower):
-            search_text += f" {ticker.lower()} "
+            search_text += f" {symbol} "
 
     detected_pairs = []
     for pair in TARGET_PAIRS:
@@ -93,7 +115,6 @@ async def process_news(msg, source, ctx):
             pot_pair = f"{found_symbol.lower()}usdt"
             if pot_pair in TARGET_PAIRS:
                 ctx.log_ui(f"🕵️ AJAN BULDU: {found_symbol}", "success")
-                log_txt(f"🕵️ AJAN BULDU: {found_symbol}")
                 detected_pairs.append(pot_pair)
 
     for pair in detected_pairs:
@@ -111,11 +132,42 @@ async def process_news(msg, source, ctx):
         log_txt(f"🌍 Smart Query: '{smart_query}'")
         search_res = await perform_research(smart_query)
 
-        changes = stats.get_all_changes()
-        symbol_map = get_top_100_map()
-        coin_full_name = symbol_map.get(pair.replace('usdt',''), 'Unknown').title()
+        # Coin Verilerini Çek
+        coin_map = get_top_100_map() # Her seferinde çekmek yavaşlatır, bunu global cache yapmak lazım ama şimdilik böyle kalsın
         
-        dec = await ctx.brain.analyze_specific(msg, pair, stats.current_price, changes, search_res, coin_full_name)
+        # Hedef coinin Market Cap'ini bul
+        clean_symbol = pair.replace('usdt', '').lower()
+        coin_info = coin_map.get(clean_symbol, {'cap': 0, 'name': 'Unknown'})
+        market_cap = coin_info.get('cap', 0)
+        coin_full_name = coin_info.get('name', 'Unknown').title()
+        # 1. RSI Hesapla
+        rsi_val = stats.calculate_rsi()
+        
+        # 2. BTC Trendini Çek (Piyasa Yönü)
+        btc_stats = ctx.market_memory.get('btcusdt')
+        btc_trend = btc_stats.get_change(60) if btc_stats else 0.0
+        
+        # Güvenli veri çekimi
+        if isinstance(coin_map.get(clean_symbol), dict):
+            c_info = coin_map[clean_symbol]
+            coin_full_name = c_info.get('name', 'Unknown').title()
+            m_cap = c_info.get('cap', 0)
+        else:
+            # Eski utils.py yapısı dönerse diye fallback
+            coin_full_name = str(coin_map.get(clean_symbol, 'Unknown')).title()
+            m_cap = 0
+
+        # Market Cap String Formatı
+        if m_cap > 1_000_000_000:
+            cap_str = f"${m_cap / 1_000_000_000:.2f} BILLION"
+        elif m_cap > 1_000_000:
+            cap_str = f"${m_cap / 1_000_000:.2f} MILLION"
+        else:
+            cap_str = "UNKNOWN/SMALL"
+
+        changes = stats.get_all_changes()
+        volume_24h, funding_rate = await ctx.real_exchange.get_extended_metrics(pair)
+        dec = await ctx.brain.analyze_specific(msg, pair, stats.current_price, changes, search_res, coin_full_name, cap_str, rsi_val, btc_trend, volume_24h, funding_rate)
         ctx.collector.log_decision(msg, pair, stats.current_price, str(changes), dec)
         
         if dec['confidence'] >= 75 and dec['action'] in ['LONG', 'SHORT']:
@@ -167,6 +219,8 @@ async def process_news(msg, source, ctx):
         else:
             log = f"🛑 Pas: {pair.upper()} ({coin_full_name}) | {dec['action']} | (G: %{dec['confidence']}) | Reason : {dec.get('reason')}\nNews: {msg}"
             ctx.log_ui(log, "warning")
+            log_txt(log)
+            asyncio.create_task(send_telegram_alert(ctx, log))
 
     end_time = time.time()
     ctx.log_ui(f"[{source}] Haber İşleme Süresi: {end_time - start_time:.2f} saniye.", "info")
@@ -200,6 +254,7 @@ async def websocket_loop(ctx):
                                 log, color, closed_sym, pnl, peak_price = ctx.exchange.check_positions(pair, price)
                                 if log:
                                     ctx.log_ui(log, color)
+                                    log_txt(log)
                                     asyncio.create_task(send_telegram_alert(ctx, log))
                                     if closed_sym:
                                         ctx.dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
