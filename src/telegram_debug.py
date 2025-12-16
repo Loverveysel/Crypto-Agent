@@ -26,6 +26,10 @@ dir = dir.replace('src', 'data')
 os.chdir(dir)
 SESSION_PATH = os.path.join(dir, SESSION_NAME)
 
+class Context:
+    pass
+ctx = Context()
+ctx.telegram_client = None
 
 async def main():
     print(f"--- 🕵️‍♂️ DERİN ANALİZ BAŞLIYOR ---")
@@ -47,8 +51,9 @@ async def main():
     try:
         # Bağlantı denemesi
         await client.connect()
+        ctx.telegram_client = client
         
-        await send_telegram_alert("Telegram Debug", "Telegram Debug")
+        await send_telegram_alert(ctx, "Telegram Debug")
         if client.is_connected():
             print("\n✅ BAĞLANTI BAŞARILI! (Sorun IPv6 veya Timeout olabilirmiş)")
             me = await client.get_me()
