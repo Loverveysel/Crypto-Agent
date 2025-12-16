@@ -49,6 +49,7 @@ async def main():
         if client.is_connected():
             print("\n✅ BAĞLANTI BAŞARILI! (Sorun IPv6 veya Timeout olabilirmiş)")
             me = await client.get_me()
+            await client.send_message('me', 'Merhaba')
             if me:
                 print(f"👤 Kimlik: {me.username}")
             else:
