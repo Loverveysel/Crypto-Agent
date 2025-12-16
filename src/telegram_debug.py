@@ -16,7 +16,7 @@ load_dotenv()
 
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
-SESSION_NAME = 'debug_session' # Geçici bir session kullanalım
+SESSION_NAME = 'crypto_agent_session' # Geçici bir session kullanalım
 
 # Klasör ayarları (Standart prosedür)
 path = os.path.realpath(__file__)
