@@ -48,7 +48,7 @@ ctx.brain = AgentBrain(
 ctx.real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTNET)
 ctx.collector = TrainingDataCollector()
 ctx.dataset_manager = DatasetManager()
-ctx.telegram_client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH)
+ctx.telegram_client = TelegramClient(TELETHON_SESSION_NAME, API_ID, API_HASH, use_ipv6=False, timeout=10)
 ctx.stream_command_queue = None
 ctx.news_memory = NewsMemory()
 
