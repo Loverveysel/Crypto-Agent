@@ -82,6 +82,10 @@ def log_ui_wrapper(message, type="info"):
 
 ctx.log_ui = log_ui_wrapper
 
+async def delayed_telegram_start():
+    await asyncio.sleep(3)  # AWS için kritik
+    await services.telegram_loop(ctx)
+
 # --- STARTUP TASKS ---
 async def start_tasks():
     ctx.stream_command_queue = asyncio.Queue()
@@ -105,7 +109,6 @@ async def start_tasks():
     # 2. Launch Loops
     #asyncio.create_task(services.rss_loop(ctx)) # RSS Loopü devre dışı bırakıldı
     asyncio.create_task(services.websocket_loop(ctx))
-    asyncio.create_task(services.telegram_loop(ctx))
     asyncio.create_task(services.collector_loop(ctx))
 
 # --- UI ENTRY POINT ---
@@ -121,5 +124,5 @@ def index():
         on_manual_submit=manual_news_handler
     )
 
-app.on_startup(start_tasks)
+app.on_startup(lambda: asyncio.create_task(delayed_telegram_start()))
 ui.run(title="Crypto AI", host="0.0.0.0", dark=True, port=8080, reload=False)
