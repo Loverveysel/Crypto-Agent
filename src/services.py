@@ -277,33 +277,30 @@ async def websocket_loop(ctx):
             await asyncio.sleep(5)
 
 async def telegram_loop(ctx):
-    # KRİTİK DEĞİŞİKLİK: start() yerine connect() kullanıyoruz.
-    # start() metodu oturum yoksa input bekler ve kodu dondurur.
     ctx.log_ui("Telegram Bağlanıyor...", "info")
     try:
         await ctx.telegram_client.connect()
+
         print("CONNECTED:", ctx.telegram_client.is_connected())
         print("AUTHORIZED:", await ctx.telegram_client.is_user_authorized())
-        await send_telegram_alert(ctx, "Telegram Bağlandı ✅")
-        # Oturum kontrolü
+
         if not await ctx.telegram_client.is_user_authorized():
-            ctx.log_ui("❌ TELEGRAM OTURUMU YOK! 'crypto_agent_session.session' dosyası eksik veya geçersiz.", "error")
-            print("❌ TELEGRAM HATASI: Oturum dosyası bulunamadı. Lütfen setup.py'yi çalıştırın.")
+            ctx.log_ui("❌ TELEGRAM OTURUMU YOK!", "error")
             return
 
-        ctx.log_ui("Telegram Listening 📡 (Oturum Açık)", "success")
-        
+        ctx.log_ui("Telegram Listening 📡", "success")
+
         @ctx.telegram_client.on(events.NewMessage(chats=TARGET_CHANNELS))
         async def handler(event):
-            if event.message.message: 
+            if event.message.message:
                 await process_news(event.message.message, "TELEGRAM", ctx)
-                
-        # Sonsuza kadar bekle (Telethon'un kapanmasını önle)
-        await ctx.telegram_client.run_until_disconnected()
-        
+
+        # 🔴 BURASI SİLİNDİ
+        # await ctx.telegram_client.run_until_disconnected()
+
     except Exception as e:
         ctx.log_ui(f"❌ Telegram Hatası: {e}", "error")
-
+        
 async def collector_loop(ctx):
     ctx.log_ui("Data Collector Active 💾", "success")
     while True:
