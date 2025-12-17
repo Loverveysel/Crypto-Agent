@@ -12,7 +12,7 @@ from utils import get_top_100_map, perform_research
 from config import (
     TARGET_PAIRS, TARGET_CHANNELS, RSS_FEEDS, WEBSOCKET_URL,
     REAL_TRADING_ENABLED, IGNORE_KEYWORDS, DANGEROUS_TICKERS,
-    FIXED_TRADE_AMOUNT, LEVERAGE
+    FIXED_TRADE_AMOUNT, LEVERAGE, AMBIGUOUS_COINS
 )
 
 def log_txt(message, filename="trade_logs.txt"):
@@ -99,17 +99,27 @@ async def process_news(msg, source, ctx):
             search_text += f" {symbol} "
 
     detected_pairs = []
-    for pair in TARGET_PAIRS:
-        symbol = pair.replace('usdt', '').upper()
-        if symbol in DANGEROUS_TICKERS:
-            suffixes = r'(Coin|Token|Network|Protocol|Chain|Foundation|DAO|Swap|Finance)'
-            pattern = rf"(\${symbol}\b)|((?<![\w'])\b{symbol}\s+{suffixes}\b)"
-            if re.search(pattern, msg, re.IGNORECASE):
-                ctx.log_ui(f"🕵️ Hassas Ticker Tespit Edildi: {symbol}", "warning")
-                detected_pairs.append(pair)
+    for symbol, coin_data in coin_map.items():
+        # Eğer coin "Tehlikeli" (Ambiguous) listesindeyse:
+        if symbol in AMBIGUOUS_COINS:
+            # Sadece TAM ADI geçiyorsa (örn: "Chainlink") kabul et
+            full_name = AMBIGUOUS_COINS[symbol]
+            if re.search(r'\b' + re.escape(full_name) + r'\b', msg, re.IGNORECASE):
+                 detected_pairs.append(symbol)
+                 continue
+
+            # Veya Sadece BÜYÜK HARFLE (örn: "LINK") geçiyorsa kabul et
+            # (msg_lower değil, orjinal 'msg' içinde ara!)
+            if re.search(r'\b' + re.escape(symbol.upper()) + r'\b', msg):
+                 detected_pairs.append(symbol)
+                 continue
+            
+            # Küçük harf "link" geçiyorsa YOK SAY.
+        
         else:
-            if re.search(r'\b' + symbol.lower() + r'\b', search_text):
-                detected_pairs.append(pair)
+            # Diğer coinler için (BTC, ETH, XRP) eski usul (küçük harf duyarsız) devam et
+            if re.search(r'\b' + re.escape(symbol) + r'\b', msg, re.IGNORECASE):
+                detected_pairs.append(symbol)
 
     if not detected_pairs:
         ctx.log_ui("⚠️ Regex bulamadı, Ajan'a soruluyor...", "warning")
