@@ -1,6 +1,8 @@
 import requests
 from ddgs import DDGS # <--- YENİ IMPORT
 import asyncio
+import re
+from config import DANGEROUS_TICKERS, AMBIGUOUS_COINS
 
 def get_top_pairs(limit=50):
     """Binance'den son 24 saatte en çok hacim yapan USDT paritelerini çeker"""
@@ -92,6 +94,90 @@ async def perform_research(query):
     # log_ui(f"🌍 Araştırılıyor: {query}...", "info")
     return await asyncio.to_thread(search_web_sync, query)
 # brain.py dosyasına eklenecek kapsamlı sözlük
+
+def find_coins(msg, coin_map=None):
+    """
+    3 Aşamalı Coin Tespit Algoritması:
+    
+    1. DANGEROUS (THE, IS, A): 
+       - Sadece BÜYÜK HARF + BAĞLAM KELİMESİ varsa kabul et.
+       - Örn: "THE Protocol", "IS Token", "A Network".
+       - "This is a token" -> YAKALAMAZ.
+       
+    2. AMBIGUOUS (LINK, GAS, SUN): 
+       - Sadece BÜYÜK HARF (LINK) veya TAM İSİM (Chainlink) ise kabul et.
+       - "Click the link" -> YAKALAMAZ.
+       
+    3. NORMAL (BTC, ETH): 
+       - Esnek arama (Büyük/Küçük harf).
+    """
+    
+    if not msg:
+        return []
+
+    # Harita yoksa oluştur
+    if coin_map is None:
+        try:
+            from src.data_collector import get_top_100_map
+            raw_map = get_top_100_map()
+            coin_map = {}
+            for name, data in raw_map.items():
+                if isinstance(data, dict):
+                    sym = data.get('symbol', '').upper()
+                    coin_map[sym] = name 
+                else:
+                    sym = str(data).upper()
+                    coin_map[sym] = name
+        except ImportError:
+            return []
+
+    detected_pairs = set()
+    ambiguous_upper = {k.upper(): v for k, v in AMBIGUOUS_COINS.items()}
+
+    # --- BAĞLAM KELİMELERİ (Koruma Kalkanı) ---
+    # Tehlikeli coinlerin yanında bunlardan biri ZORUNLU olacak.
+    # (Protocol, Network, Token, Coin, DAO, Chain, Finance, Labs, Foundation, Swap)
+    context_pattern = r'(?:Protocol|Network|Token|Coin|DAO|Chain|Finance|Labs|Foundation|Swap)'
+
+    for symbol, full_name in coin_map.items():
+        symbol_upper = symbol.upper()
+        
+        # --- SENARYO 1: DANGEROUS TICKERS (THE, IS, A, TO) ---
+        # Kural: Ticker BÜYÜK HARF olacak + Yanında BAĞLAM kelimesi olacak.
+        if symbol_upper in DANGEROUS_TICKERS:
+            # Regex Mantığı: \bTHE\s+(Protocol|Token...)\b
+            # Örnek: "THE Protocol" -> Eşleşir. "THE car" -> Eşleşmez. "the Protocol" -> Eşleşmez.
+            strict_pattern = r'\b' + re.escape(symbol_upper) + r'\s+' + context_pattern + r'\b'
+            
+            if re.search(strict_pattern, msg): # re.IGNORECASE YOK!
+                detected_pairs.add(symbol_upper + "USDT")
+            continue 
+
+        # --- SENARYO 2: AMBIGUOUS COINS (LINK, GAS, SUN) ---
+        elif symbol_upper in ambiguous_upper:
+            # 2a. Ticker Kontrolü (LINK): Sadece BÜYÜK HARF ise al (Bağlam şart değil ama Büyük harf şart)
+            if re.search(r'\b' + re.escape(symbol_upper) + r'\b', msg):
+                detected_pairs.add(symbol_upper + "USDT")
+                continue
+            
+            # 2b. Tam İsim Kontrolü (Chainlink): Normal arama
+            special_full_name = ambiguous_upper[symbol_upper]
+            if re.search(r'\b' + re.escape(special_full_name) + r'\b', msg, re.IGNORECASE):
+                detected_pairs.add(symbol_upper + "USDT")
+            continue
+
+        # --- SENARYO 3: NORMAL COINLER (BTC, ETH) ---
+        else:
+            # Ticker (btc, BTC)
+            if re.search(r'\b' + re.escape(symbol_upper) + r'\b', msg, re.IGNORECASE):
+                detected_pairs.add(symbol_upper + "USDT")
+                continue
+            
+            # Tam İsim (bitcoin, Bitcoin)
+            if re.search(r'\b' + re.escape(full_name) + r'\b', msg, re.IGNORECASE):
+                detected_pairs.add(symbol_upper + "USDT")
+
+    return list(detected_pairs)
 
 coin_categories = {
     # --- TOP 10 & MAJORS (Demirbaşlar) ---

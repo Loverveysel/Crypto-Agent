@@ -8,12 +8,14 @@ import websockets
 from telethon import events
 
 from rss_listener import RSSMonitor
-from utils import get_top_100_map, perform_research
+from utils import get_top_100_map, perform_research, find_coins
 from config import (
-    TARGET_PAIRS, TARGET_CHANNELS, RSS_FEEDS, WEBSOCKET_URL,
+    TARGET_CHANNELS, RSS_FEEDS, WEBSOCKET_URL,
     REAL_TRADING_ENABLED, IGNORE_KEYWORDS, DANGEROUS_TICKERS,
     FIXED_TRADE_AMOUNT, LEVERAGE, AMBIGUOUS_COINS
 )
+
+TARGET_PAIRS = get_top_100_map()
 
 def log_txt(message, filename="trade_logs.txt"):
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -81,49 +83,11 @@ async def process_news(msg, source, ctx):
 
     ctx.log_ui(f"[{source}] Taranıyor: {msg[:40]}...", "info")    
     
-    name_map = get_top_100_map()
-    search_text = msg_lower 
-    
-    for name, data in name_map.items():
-        # Veri artık sözlük olduğu için önce tipini kontrol et
-        if isinstance(data, dict):
-            symbol = data.get('symbol', '').lower()
-        else:
-            # Eski formatta string gelirse diye güvenlik önlemi
-            symbol = str(data).lower()
-
-        safe_name = re.escape(name)
-        pattern = r'\b' + safe_name + r'\b'
-        
-        if re.search(pattern, msg_lower):
-            search_text += f" {symbol} "
-
-    detected_pairs = []
-    for symbol, coin_data in coin_map.items():
-        # Eğer coin "Tehlikeli" (Ambiguous) listesindeyse:
-        if symbol in AMBIGUOUS_COINS:
-            # Sadece TAM ADI geçiyorsa (örn: "Chainlink") kabul et
-            full_name = AMBIGUOUS_COINS[symbol]
-            if re.search(r'\b' + re.escape(full_name) + r'\b', msg, re.IGNORECASE):
-                 detected_pairs.append(symbol)
-                 continue
-
-            # Veya Sadece BÜYÜK HARFLE (örn: "LINK") geçiyorsa kabul et
-            # (msg_lower değil, orjinal 'msg' içinde ara!)
-            if re.search(r'\b' + re.escape(symbol.upper()) + r'\b', msg):
-                 detected_pairs.append(symbol)
-                 continue
-            
-            # Küçük harf "link" geçiyorsa YOK SAY.
-        
-        else:
-            # Diğer coinler için (BTC, ETH, XRP) eski usul (küçük harf duyarsız) devam et
-            if re.search(r'\b' + re.escape(symbol) + r'\b', msg, re.IGNORECASE):
-                detected_pairs.append(symbol)
+    detected_pairs = find_coins(msg, coin_map=TARGET_PAIRS)
 
     if not detected_pairs:
         ctx.log_ui("⚠️ Regex bulamadı, Ajan'a soruluyor...", "warning")
-        found_symbol = await ctx.brain.detect_symbol(msg, TARGET_PAIRS)
+        found_symbol = await ctx.brain.detect_symbol(msg, )
         if found_symbol:
             pot_pair = f"{found_symbol.lower()}usdt"
             if pot_pair in TARGET_PAIRS:
