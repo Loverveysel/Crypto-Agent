@@ -74,6 +74,40 @@ class PaperExchange:
         else:
             pnl = (entry - current_price) * pos['qty']
 
+        # -----------------------------------------------------------
+        # MENTÖR GÜNCELLEMESİ: TRAILING STOP (AKILLI TAKİP)
+        # -----------------------------------------------------------
+        roi = 0.0
+        
+        if side == 'LONG':
+            roi = (current_price - entry) / entry * 100
+            
+            # 1. ADIM: ZARARSIZ MOD (Breakeven)
+            # Eğer kar %0.8'i geçerse, Stop'u girişin azıcık üstüne çek (Komisyon çıkar)
+            if roi > 0.8 and pos['sl'] < entry:
+                pos['sl'] = entry * 1.0015 
+            
+            # 2. ADIM: KARI KİLİTLE (Trailing)
+            # Eğer kar %1.5'u geçerse, Stop'u %1.0 kara sabitle.
+            # Fiyat daha da artarsa (%2, %3), burayı dinamik yapabilirsin ama şimdilik bu yeter.
+            if roi > 1.5:
+                new_sl = entry * 1.01 
+                if pos['sl'] < new_sl: # Sadece yukarı taşı, asla aşağı indirme!
+                    pos['sl'] = new_sl
+
+        elif side == 'SHORT':
+            roi = (entry - current_price) / entry * 100
+            
+            # 1. ADIM: ZARARSIZ MOD
+            if roi > 0.8 and pos['sl'] > entry:
+                pos['sl'] = entry * 0.9985
+                
+            # 2. ADIM: KARI KİLİTLE
+            if roi > 1.5:
+                new_sl = entry * 0.99
+                if pos['sl'] > new_sl: # Sadece aşağı taşı, asla yukarı çıkarma!
+                    pos['sl'] = new_sl
+
         # Çıkış Kontrolleri
         close_reason = None
         

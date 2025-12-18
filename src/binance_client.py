@@ -263,3 +263,34 @@ class BinanceExecutionEngine:
         except Exception as e:
             print(f"⚠️ [METRİK HATA] {symbol}: {e}")
             return "Unknown", 0.0
+        
+    async def get_order_book_imbalance(self, symbol, limit=100):
+        """
+        Tahtadaki Alıcı/Satıcı dengesizliğini ölçer.
+        Dönüş: (Oran, Yorum)
+        Oran > 0 ise Alıcılar Güçlü (Bullish)
+        Oran < 0 ise Satıcılar Güçlü (Bearish)
+        """
+        if not self.client: return 0.0, "No Connection"
+        
+        try:
+            # Derinlik verisini çek (Limit 100 yeterli, fazlası yavaşlatır)
+            depth = await self.client.futures_depth(symbol=symbol.upper(), limit=limit)
+            
+            # Bids (Alışlar) ve Asks (Satışlar) toplam hacmini hesapla
+            # Liste formatı: [[Fiyat, Miktar], [Fiyat, Miktar]...]
+            total_bids = sum([float(x[1]) for x in depth['bids']])
+            total_asks = sum([float(x[1]) for x in depth['asks']])
+            
+            if total_bids + total_asks == 0: return 0.0, "No Volume"
+
+            # Dengesizlik Oranı (-1 ile +1 arası)
+            # +0.5 demek: Alıcılar %75, Satıcılar %25 (Çok Güçlü Alış)
+            # -0.5 demek: Satıcılar %75, Alıcılar %25 (Çok Güçlü Satış)
+            imbalance = (total_bids - total_asks) / (total_bids + total_asks)
+            
+            return imbalance, f"Bids: {total_bids:.2f} | Asks: {total_asks:.2f}"
+            
+        except Exception as e:
+            print(f"⚠️ [DEPTH HATA] {e}")
+            return 0.0, "Error"

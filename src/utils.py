@@ -180,6 +180,8 @@ def find_coins(msg, coin_map=None):
                     detected_pairs.add(symbol_upper + "USDT")
 
     return list(detected_pairs)
+
+
     
 coin_categories = {
     # --- TOP 10 & MAJORS (Demirbaşlar) ---
