@@ -64,7 +64,10 @@ def create_dashboard(ctx, on_manual_submit):
                 with ui.column().classes('col-span-2 h-full bg-gray-900/50 rounded-lg border border-gray-800 p-4'):
                     with ui.row().classes('w-full justify-between items-center mb-2'):
                         ui.label('⚡ AKTİF POZİSYONLAR').classes('text-sm font-bold text-primary')
-                        ui.button('TÜMÜNÜ KAPAT', icon='close', color='negative', size='xs').props('outline') # İşlevsiz, görüntü için
+                        
+                        # --- DÜZELTME BURADA YAPILDI ---
+                        # size='xs' parametresi silindi, .props('size=xs') eklendi.
+                        ui.button('TÜMÜNÜ KAPAT', icon='close', color='negative').props('outline size=xs') 
                     
                     positions_container = ui.column().classes('w-full gap-2 overflow-y-auto pr-2')
 
@@ -122,9 +125,7 @@ def create_dashboard(ctx, on_manual_submit):
                     ui.label("Beklemede... İşlem yok.").classes('text-gray-600 italic text-sm w-full text-center mt-10')
             
             for sym, pos in exchange.positions.items():
-                pnl = pos['pnl'] # Exchange'deki check_positions anlık güncelliyorsa burası doğrudur
-                # Eğer pnl anlık güncellenmiyorsa burada hesapla:
-                # pnl = (pos['current_price'] - pos['entry']) * pos['qty'] * (1 if pos['side'] == 'LONG' else -1)
+                pnl = pos['pnl']
                 
                 pnl_color = "text-positive" if pnl >= 0 else "text-negative"
                 border_color = "border-positive" if pnl >= 0 else "border-negative"
@@ -168,7 +169,7 @@ def create_dashboard(ctx, on_manual_submit):
                         ui.label(f"{buffer.current_price:.4f}").classes('font-mono text-sm text-white')
                         ui.label(f"%{change_1h:.2f} (1h)").classes(f'text-xs {txt_col}')
 
-            # 4. Geçmiş Tab'ı Yenile (Son 10 işlem)
+            # 4. Geçmiş Tab'ı Yenile (Son 20 işlem)
             history_container.clear()
             with history_container:
                 if not exchange.history:
