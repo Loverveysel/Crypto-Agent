@@ -1,9 +1,8 @@
 from nicegui import ui
 import asyncio
 
-def create_dashboard(app_state, exchange, on_manual_submit):
-    ui.colors(primary='#5898d4', secondary='#26a69a', accent='#9c27b0', dark='#1d1d1d')
-    
+def create_dashboard(app_state, exchange, on_manual_submit, existing_logs=None):
+    ui.colors(primary='#5898d4', secondary='#26a69a', accent='#9c27b0', dark='#1d1d1d')    
     # --- HEADER ---
     with ui.header().classes(replace='row items-center') as header:
         ui.icon('smart_toy', size='32px')
@@ -50,8 +49,15 @@ def create_dashboard(app_state, exchange, on_manual_submit):
             
         with ui.column().classes("w-full h-screen"):
             ui.label("CANLI LOG AKIŞI").classes("text-lg font-bold mb-2 text-yellow-400")
-            log_container = ui.log(max_lines=100).classes("w-full h-96 bg-gray-900 text-green-400 font-mono text-sm p-2 border border-gray-700 rounded")
-
+            
+            # Log Container oluştur
+            log_container = ui.log(max_lines=200).classes("w-full h-96 bg-gray-900 text-green-400 font-mono text-sm p-2 border border-gray-700 rounded")
+            
+            # --- GEÇMİŞ LOGLARI YÜKLE (Hafıza Nakli) ---
+            if existing_logs:
+                for log_msg in existing_logs:
+                    log_container.push(log_msg)
+                    
     # --- LOCAL REFRESH ---
     def refresh_local_ui():
         try:

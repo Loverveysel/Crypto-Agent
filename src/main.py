@@ -1,6 +1,6 @@
 
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque  # <--- 'deque' EKLENDİ
 import time
 import os
 from nicegui import ui, app
@@ -44,6 +44,7 @@ class BotContext:
     def __init__(self):
         self.is_running = True
         self.log_container = None
+        self.runtime_logs = deque(maxlen=200)
 
 ctx = BotContext()
 
@@ -81,10 +82,14 @@ def log_ui_wrapper(message, type="info"):
     if type == "success": icon = "✅"
     elif type == "error": icon = "❌"
     elif type == "warning": icon = "⚠️"
-    
+
     full_msg = f"[{timestamp}] {icon} {message}"
     print(full_msg) 
-    
+
+    # 1. HAFIZAYA KAYDET (Kritik Hamle)
+    ctx.runtime_logs.append(full_msg)
+
+    # 2. Ekrana Bas (Eğer UI açıksa)
     try:
         if ctx.log_container is not None:
             ctx.log_container.push(full_msg)
@@ -124,11 +129,12 @@ def index():
     async def manual_news_handler(text, source="MANUAL"):
         await services.process_news(text, source, ctx)
 
-    # Create Dashboard and capture the log container
+    # Dashboard oluştururken hafızadaki logları (ctx.runtime_logs) parametre olarak gönder
     ctx.log_container = create_dashboard(
         app_state=ctx.app_state,
         exchange=ctx.exchange,
-        on_manual_submit=manual_news_handler
+        on_manual_submit=manual_news_handler,
+        existing_logs=ctx.runtime_logs  # <--- YENİ PARAMETRE
     )
 
 

@@ -11,8 +11,8 @@ from rss_listener import RSSMonitor
 from utils import get_top_100_map, perform_research, find_coins
 from config import (
     TARGET_CHANNELS, RSS_FEEDS, WEBSOCKET_URL,
-    REAL_TRADING_ENABLED, IGNORE_KEYWORDS, DANGEROUS_TICKERS,
-    FIXED_TRADE_AMOUNT, LEVERAGE, AMBIGUOUS_COINS
+    REAL_TRADING_ENABLED, IGNORE_KEYWORDS,
+    FIXED_TRADE_AMOUNT, LEVERAGE
 )
 
 TARGET_PAIRS = get_top_100_map()
@@ -146,8 +146,32 @@ async def process_news(msg, source, ctx):
         # 1. RSI Hesapla
         rsi_val = stats.calculate_rsi()
         
-        # 2. BTC Trendini Çek (Piyasa Yönü)
-        btc_stats = ctx.market_memory.get('btcusdt')
+        # 2. BTC Trendini Çek (Piyasa Yönü) - GÜÇLENDİRİLMİŞ VERSİYON
+        btc_pair = 'btcusdt'
+        btc_stats = ctx.market_memory.get(btc_pair)
+        
+        # Eğer BTC verisi yoksa veya çok eskiyse (5 dakikadan fazla)
+        btc_is_stale = False
+        if not btc_stats or not btc_stats.candles:
+             btc_is_stale = True
+        elif (int(time.time()/60) - btc_stats.candles[-1][0]) > 5:
+             btc_is_stale = True
+             
+        if btc_is_stale:
+            # ctx.log_ui("⚠️ BTC Trendi eksik, anlık çekiliyor...", "info") # Çok log kirletmesin diye kapalı
+            btc_hist, btc_24h = await ctx.real_exchange.fetch_missing_data(btc_pair)
+            if btc_hist:
+                if btc_pair not in ctx.market_memory:
+                    ctx.market_memory[btc_pair] = PriceBuffer() # Import hatası alırsan en üste from price_buffer import PriceBuffer ekle
+                
+                # Hafızayı doldur
+                ctx.market_memory[btc_pair].candles.clear()
+                for c, t in btc_hist:
+                    ctx.market_memory[btc_pair].update_candle(c, t, True)
+                ctx.market_memory[btc_pair].current_price = btc_hist[-1][0]
+                btc_stats = ctx.market_memory[btc_pair]
+        
+        # Artık btc_stats dolu, hesapla
         btc_trend = btc_stats.get_change(60) if btc_stats else 0.0
         
         # Güvenli veri çekimi
