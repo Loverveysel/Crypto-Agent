@@ -124,6 +124,8 @@ class PaperExchange:
         # expiry_time'ı kontrol ediyoruz.
         if time.time() > pos['expiry_time']:
             close_reason = "TIME LIMIT ⏳"
+            
+        print("Position checked", symbol, current_price, pos['entry'], pos['side'], pos['qty'], pos['margin'], pos['tp'], pos['sl'], pos['pnl'], pos['expiry_time'], pos['validity'], pos['highest_price'], pos['lowest_price'])
 
         if close_reason:
             # Pozisyonu Kapat ve Sil
@@ -136,6 +138,7 @@ class PaperExchange:
             # peak_price'ı en sona ekledik
             return log_msg, color, symbol, pnl, peak_price 
 
+        print("Position checked", symbol, current_price, pos['entry'], pos['side'], pos['qty'], pos['margin'], pos['tp'], pos['sl'], pos['pnl'], pos['expiry_time'], pos['validity'], pos['highest_price'], pos['lowest_price'])
         return None, None, None, 0.0, 0.0
     
     def close_position(self, symbol, reason, pnl):

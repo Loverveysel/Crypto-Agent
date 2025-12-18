@@ -256,6 +256,18 @@ async def process_news(msg, source, ctx):
             coin_full_name, cap_str, rsi_val, btc_trend, volume_24h, funding_rate
         )
         
+        #for testing
+        """
+        dec = {
+            "symbol": pair,
+            "action": "LONG",
+            "confidence": 100,
+            "reason": "Test",
+            "validity_minutes": 0,
+            "tp_pct": 1.5,
+            "sl_pct": 1.5,
+        }"""
+
         # Data Collector Kaydı
         ctx.collector.log_decision(msg, pair, stats.current_price, str(changes), dec)
         
@@ -383,6 +395,63 @@ async def websocket_loop(ctx):
                 await asyncio.gather(sender(), receiver())
         except Exception as e:
             ctx.log_ui(f"WS Disconnected (5s): {e}", "error")
+            await asyncio.sleep(5)
+
+async def position_monitor_loop(ctx):
+    """
+    Bekçi Köpeği: Websocket veri akışından bağımsız olarak,
+    her 5 saniyede bir pozisyonların süresini ve durumunu kontrol eder.
+    """
+    ctx.log_ui("🛡️ Position Monitor (Bekçi) Devrede...", "success")
+    
+    while True:
+        try:
+            await asyncio.sleep(1) # 5 Saniyede bir kontrol et
+            
+            if not ctx.exchange.positions:
+                continue
+
+            # Sözlük değişirken hata almamak için listeye çevirip dönüyoruz
+            open_symbols = list(ctx.exchange.positions.keys())
+            
+            for pair in open_symbols:
+                # Hafızadaki son fiyatı al
+                current_price = ctx.market_memory[pair].current_price
+                
+                # Eğer fiyat 0 ise (henüz veri gelmediyse) pas geç, yanlış kapatmasın
+                if current_price == 0: 
+                    continue
+
+                # Mevcut kontrol fonksiyonunu çağır (Bu fonksiyon süreyi de kontrol ediyor)
+                log, color, closed_sym, pnl, peak_price = ctx.exchange.check_positions(pair, current_price)
+                
+                if log:
+                    # Eğer bir kapatma kararı çıktıysa (Süre doldu veya TP/SL)
+                    ctx.log_ui(log, color)
+                    log_txt(log)
+                    asyncio.create_task(send_telegram_alert(ctx, log))
+                    
+                    if closed_sym:
+                        # 1. Dataset'e kaydet
+                        ctx.dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
+                        
+                        # 2. Gerçek Borsada Kapat
+                        if REAL_TRADING_ENABLED:
+                            asyncio.create_task(ctx.real_exchange.close_position_market(closed_sym))
+                        
+                        # 3. Stream Aboneliğini İptal Et (Trafik yapmasın)
+                        unsubscribe_msg = {
+                            "method": "UNSUBSCRIBE",
+                            "params": [f"{closed_sym.lower()}@kline_1m"],
+                            "id": int(time.time())
+                        }
+                        await ctx.stream_command_queue.put(unsubscribe_msg)
+                        
+                        # 4. Bakiyeyi Güncelle
+                        asyncio.create_task(update_system_balance(ctx, last_pnl=pnl))
+
+        except Exception as e:
+            ctx.log_ui(f"⚠️ Monitor Loop Hatası: {e}", "error")
             await asyncio.sleep(5)
 
 async def telegram_loop(ctx):

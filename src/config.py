@@ -33,8 +33,8 @@ if USE_MAINNET:
     API_SECRET = os.getenv('BINANCE_API_SECRET')
     IS_TESTNET = False
 else:
-    API_KEY = os.getenv('BINANCE_API_KEY_TESTNET')
-    API_SECRET = os.getenv('BINANCE_API_SECRET_TESTNET')
+    API_KEY = os.getenv('BINANCE_DEMO_API_KEY')
+    API_SECRET = os.getenv('BINANCE_DEMO_API_SECRET')
     IS_TESTNET = True
 
 BASE_URL = os.getenv('BASE_URL', "wss://stream.binance.com:9443/ws")

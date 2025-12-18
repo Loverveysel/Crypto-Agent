@@ -124,6 +124,7 @@ async def start_tasks():
     asyncio.create_task(services.websocket_loop(ctx))
     asyncio.create_task(services.collector_loop(ctx))
     asyncio.create_task(services.telegram_loop(ctx))
+    asyncio.create_task(services.position_monitor_loop(ctx))
 # --- UI ENTRY POINT ---
 @ui.page('/') 
 @ui.page('/') 
