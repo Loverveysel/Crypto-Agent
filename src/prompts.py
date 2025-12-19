@@ -116,7 +116,7 @@ GOAL: Verify Timestamp and Authenticity.
 STRATEGY:
 1. If "Listing", search "Exchange listing [TOKEN] official time".
 2. If "Hack", search "[TOKEN] exploit twitter confirmation".
-3. General: Search "[TOKEN] crypto news {current_time_str}" to see if it's old.
+3. General: Search "[TOKEN] crypto news 
 
 OUTPUT: A targeted, short Google search query.
 """
