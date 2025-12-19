@@ -399,6 +399,18 @@ def create_dashboard(ctx, on_manual_submit, existing_logs=None):
                         ui.label(f"{d['price']}").classes(
                             "col-span-1 text-gray-400 font-mono"
                         )
+                        ui.label(d["tp_pct"]).classes(
+                            "col-span-1 text-gray-400 font-mono"
+                        )
+                        ui.label(d["sl_pct"]).classes(
+                            "col-span-1 text-gray-400 font-mono"
+                        )
+                        ui.label(d["validity"]).classes(
+                            "col-span-1 text-gray-400 font-mono"
+                        )
+                        ui.label(d["news_snippet"]).classes(
+                            "col-span-1 text-gray-400 font-mono"
+                        )
                         ui.label(d["reason"]).classes(
                             "col-span-7 text-gray-300 truncate"
                         ).tooltip(d["reason"])
