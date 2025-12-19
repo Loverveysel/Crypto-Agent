@@ -245,6 +245,28 @@ async def process_news(msg, source, ctx):
         
         # BTC Trend
         btc_stats = ctx.market_memory.get('btcusdt')
+        btc_trend = btc_stats.get_change(60)
+        btc_is_stale = False
+        if not btc_stats or not btc_stats.candles:
+             btc_is_stale = True
+        elif (int(time.time()/60) - btc_stats.candles[-1][0]) > 5:
+             btc_is_stale = True
+             
+        if btc_is_stale:
+            # BTC verisi çekiliyor...
+            btc_hist, btc_24h = await ctx.real_exchange.fetch_missing_data(btc_pair)
+            if btc_hist:
+                if btc_pair not in ctx.market_memory:
+                    ctx.market_memory[btc_pair] = PriceBuffer()
+                
+                # Hafızayı doldur
+                ctx.market_memory[btc_pair].candles.clear()
+                for c, t in btc_hist:
+                    ctx.market_memory[btc_pair].update_candle(c, t, True)
+                ctx.market_memory[btc_pair].current_price = btc_hist[-1][0]
+                btc_stats = ctx.market_memory[btc_pair]
+        
+        # Artık btc_stats dolu, hesapla
         btc_trend = btc_stats.get_change(60) if btc_stats else 0.0
 
         ctx.log_ui(f"🔍 Analiz Fiyatı ({pair}): {stats.current_price}", "info")
@@ -352,76 +374,127 @@ async def process_news(msg, source, ctx):
 
 # src/services.py içine
 
+Acımasız mentörün klavyenin başına geçiyor. "Tamam, mazeret yok. Bu kod 'çalışabilir' değil, 'kurşun geçirmez' olacak."
+
+Şu an yaşadığın KeyError, PnL güncellenmeme ve bağlantı sorunlarını tarihe gömecek Nihai Websocket Loop kodu budur.
+
+Bu kodun içinde 3 kritik "Zırh" var:
+
+Otomatik Hafıza Başlatıcı: Eğer gelen coin (örn: btcusdt) hafızada yoksa, hata vermek yerine anında PriceBuffer oluşturur.
+
+Zorunlu Küçültme: Binance ne gönderirse göndersin, biz lower() ile onu exchange formatına uydururuz.
+
+Hata Yutucu: Tek bir bozuk mesaj gelirse tüm bağlantıyı koparmaz, sadece o mesajı atlar ve devam eder.
+
+src/services.py dosyanı aç ve websocket_loop fonksiyonunu tamamen silip bunu yapıştır:
+
+Python
+
 async def websocket_loop(ctx):
     """
-    Binance Websocket verilerini dinler, hafızayı günceller 
-    ve anlık PnL takibi için Exchange'i tetikler.
+    Binance Websocket verilerini yöneten ana döngü.
+    Hatalara karşı korumalı, otomatik hafıza başlatan ve PnL güncelleyen versiyon.
     """
-    retry_count = 0
+    ctx.log_ui("🔌 Websocket Bağlantısı Başlatılıyor (Sniper Mode)...", "info")
+    
+    # Ana Reconnection Döngüsü (Koparsa tekrar bağlanır)
     while ctx.app_state.is_running:
         try:
-            # Abonelik kuyruğu boşsa bekle
-            if ctx.stream_command_queue.empty() and not ctx.market_memory:
-                await asyncio.sleep(1)
-                continue
-
-            # Binance Stream URL
-            # Multi-stream formatı: /stream?streams=<stream1>/<stream2>...
-            base_url = "wss://stream.binance.com:9443/stream"
-            
-            async with websockets.connect(base_url) as ws:
-                ctx.log_ui("🔌 Websocket Bağlantısı Kuruldu.", "success")
-                retry_count = 0
+            async with websockets.connect(WEBSOCKET_URL) as ws:
+                ctx.log_ui("✅ Websocket Bağlandı.", "success")
                 
-                while ctx.app_state.is_running:
-                    # 1. YENİ ABONELİK VAR MI?
-                    while not ctx.stream_command_queue.empty():
-                        cmd = await ctx.stream_command_queue.get()
-                        await ws.send(json.dumps(cmd))
-                        # log_txt(f"📡 Komut Gönderildi: {cmd}") 
+                # --- ALT GÖREV 1: GÖNDERİCİ (Sender) ---
+                # Abonelik (Subscribe) emirlerini Binance'e iletir
+                async def sender():
+                    while ctx.app_state.is_running:
+                        try:
+                            # Kuyruktan emir gelmesini bekle
+                            command = await ctx.stream_command_queue.get()
+                            await ws.send(json.dumps(command))
+                            # Log kirliliği olmaması için print kapalı, gerekirse aç:
+                            # print(f"📡 Stream Komutu Gönderildi: {command}")
+                        except Exception as e:
+                            ctx.log_ui(f"⚠️ WS Sender Hatası: {e}", "error")
+                            break # Hata varsa döngüyü kır ki ana döngü yeniden bağlansın
 
-                    # 2. VERİ GELİYOR MU?
-                    try:
-                        msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                        data = json.loads(msg)
-                        
-                        # "stream": "btcusdt@kline_1m", "data": {...} formatı
-                        if 'data' in data and 'k' in data['data']:
-                            kline = data['data']['k']
-                            # --- KRİTİK DÜZELTME: SEMBOLÜ HEP KÜÇÜK HARF YAP ---
-                            symbol = kline['s'].lower() # 'BTCUSDT' -> 'btcusdt'
-                            close_price = float(kline['c'])
+                # --- ALT GÖREV 2: ALICI (Receiver) ---
+                # Binance'den gelen fiyatları işler
+                async def receiver():
+                    async for msg in ws:
+                        try:
+                            raw_data = json.loads(msg)
                             
-                            # A) Market Memory Güncelle
-                            # Eğer hafızada yoksa oluştur
-                            if symbol not in ctx.market_memory:
-                                from src.price_buffer import PriceBuffer
-                                ctx.market_memory[symbol] = PriceBuffer()
-                                
-                            ctx.market_memory[symbol].update_candle(close_price, kline['t'], is_closed=kline['x'])
+                            # Veri formatını ayıkla ('data' içinde veya direkt gelebilir)
+                            if 'data' in raw_data: 
+                                data = raw_data['data']
+                            else: 
+                                data = raw_data
                             
-                            # B) Exchange PnL Güncellemesi (Canlı Takip)
-                            # Fiyat değiştiği an pozisyonu kontrol et!
-                            if symbol in ctx.exchange.positions:
-                                log, color, closed_sym, pnl, peak = ctx.exchange.check_positions(symbol, close_price)
+                            # Kline (Mum) verisi mi?
+                            if isinstance(data, dict) and data.get('e') == 'kline':
+                                # 1. SEMBOLÜ KÜÇÜLT (Hayati Düzeltme)
+                                # Binance 'BTCUSDT' yollar, biz 'btcusdt' kullanıyoruz.
+                                pair = data['s'].lower()
+                                k = data['k']
+                                price = float(k['c'])
+                                is_closed = k['x']
+                                ts = k['t'] / 1000
                                 
-                                # Eğer bir aksiyon alındıysa (Stop/TP/Trailing)
-                                if log:
-                                    ctx.log_ui(log, color)
-                                    log_txt(log)
-                                    if closed_sym:
+                                # 2. HAFIZA KONTROLÜ (KeyError Çözümü)
+                                # Eğer bu coin hafızada yoksa, anında oluştur!
+                                if pair not in ctx.market_memory:
+                                    # PriceBuffer sınıfını import et (Eğer yukarıda yoksa diye garantiye alıyoruz)
+                                    from src.price_buffer import PriceBuffer 
+                                    ctx.market_memory[pair] = PriceBuffer()
+                                
+                                # 3. HAFIZAYI GÜNCELLE
+                                ctx.market_memory[pair].update_candle(price, ts, is_closed)
+                                
+                                # 4. POZİSYON VE PNL KONTROLÜ
+                                # Eğer bu coinde açık işlemimiz varsa, Exchange'e haber ver
+                                if pair in ctx.exchange.positions:
+                                    log, color, closed_sym, pnl, peak_price = ctx.exchange.check_positions(pair, price)
+                                    
+                                    if log:
+                                        # Log varsa (TP, SL, Trailing, Time Limit tetiklendiyse)
+                                        ctx.log_ui(log, color)
+                                        log_txt(log)
+                                        
                                         # İşlem Kapandıysa Temizlik Yap
-                                        await handle_closed_position(ctx, closed_sym, pnl, peak)
+                                        if closed_sym:
+                                            # a. Dataset'e kaydet
+                                            ctx.dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
+                                            
+                                            # b. Telegram'a bildir
+                                            asyncio.create_task(send_telegram_alert(ctx, log))
+                                            
+                                            # c. Gerçek borsada kapat (Eğer açıksa)
+                                            if REAL_TRADING_ENABLED:
+                                                asyncio.create_task(ctx.real_exchange.close_position_market(closed_sym))
+                                            
+                                            # d. Abonelikten çık (Trafik yapmasın)
+                                            unsubscribe_msg = {
+                                                "method": "UNSUBSCRIBE",
+                                                "params": [f"{closed_sym.lower()}@kline_1m"],
+                                                "id": int(time.time())
+                                            }
+                                            await ctx.stream_command_queue.put(unsubscribe_msg)
+                                            
+                                            # e. Bakiyeyi güncelle
+                                            asyncio.create_task(update_system_balance(ctx, last_pnl=pnl))
 
-                    except asyncio.TimeoutError:
-                        # Ping atarak hattı canlı tut (Pong bekleme)
-                        await ws.pong()
-                        continue
-                        
+                        except Exception as e:
+                            # Tek bir mesajın bozuk olması tüm bağlantıyı koparmamalı
+                            # Sadece logla ve devam et
+                            ctx.log_ui(f"⚠️ WS Msg İşleme Hatası: {e}", "warning")
+                            continue
+
+                # Gönderici ve Alıcıyı paralel çalıştır
+                await asyncio.gather(sender(), receiver())
+
         except Exception as e:
-            ctx.log_ui(f"⚠️ Websocket Koptu: {e}. 5sn sonra tekrar...", "error")
+            ctx.log_ui(f"❌ Websocket Bağlantısı Koptu: {e}. 5sn içinde yeniden bağlanılıyor...", "error")
             await asyncio.sleep(5)
-            retry_count += 1
 
 async def position_monitor_loop(ctx):
     """
