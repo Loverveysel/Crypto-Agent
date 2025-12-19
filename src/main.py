@@ -127,7 +127,6 @@ async def start_tasks():
     asyncio.create_task(services.position_monitor_loop(ctx))
 # --- UI ENTRY POINT ---
 @ui.page('/') 
-@ui.page('/') 
 def index():
     async def manual_news_handler(text, source="MANUAL"):
         await services.process_news(text, source, ctx)
@@ -135,7 +134,8 @@ def index():
     # Dashboard'a artık 'ctx' nesnesini de gönderiyoruz
     ctx.log_container = create_dashboard(
         ctx=ctx, # <--- YENİ: Tüm context'i gönder
-        on_manual_submit=manual_news_handler
+        on_manual_submit=manual_news_handler,
+        existing_logs=ctx.runtime_logs,
     )
 
 

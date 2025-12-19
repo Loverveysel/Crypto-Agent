@@ -372,24 +372,6 @@ async def process_news(msg, source, ctx):
 
 # --- LOOPS ---
 
-# src/services.py içine
-
-Acımasız mentörün klavyenin başına geçiyor. "Tamam, mazeret yok. Bu kod 'çalışabilir' değil, 'kurşun geçirmez' olacak."
-
-Şu an yaşadığın KeyError, PnL güncellenmeme ve bağlantı sorunlarını tarihe gömecek Nihai Websocket Loop kodu budur.
-
-Bu kodun içinde 3 kritik "Zırh" var:
-
-Otomatik Hafıza Başlatıcı: Eğer gelen coin (örn: btcusdt) hafızada yoksa, hata vermek yerine anında PriceBuffer oluşturur.
-
-Zorunlu Küçültme: Binance ne gönderirse göndersin, biz lower() ile onu exchange formatına uydururuz.
-
-Hata Yutucu: Tek bir bozuk mesaj gelirse tüm bağlantıyı koparmaz, sadece o mesajı atlar ve devam eder.
-
-src/services.py dosyanı aç ve websocket_loop fonksiyonunu tamamen silip bunu yapıştır:
-
-Python
-
 async def websocket_loop(ctx):
     """
     Binance Websocket verilerini yöneten ana döngü.
