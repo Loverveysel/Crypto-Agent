@@ -211,12 +211,12 @@ async def process_news(msg, source, ctx):
         return
 
     # --- 1. FİLTRELEME & HAZIRLIK ---
-    is_dup, score = ctx.news_memory.is_duplicate(msg)
+    is_dup, score = ctx.memory.is_duplicate(msg)
     if is_dup:
         ctx.log_ui(f"♻️ [TEKRAR] Haber engellendi (Benzerlik: {score:.2f})", "warning")
         return
 
-    ctx.news_memory.add_news(source, msg)
+    ctx.memory.add_news(source, msg)
     clean_msg = msg.replace("— link", "").replace("Link:", "")
     msg_lower = clean_msg.lower()
 
