@@ -8,7 +8,7 @@ class PaperExchange:
         self.history = []
 
 
-    def open_position(self, symbol, side, price, tp_pct, sl_pct, amount_usdt, leverage, validity, app_state):
+    def open_position(self, symbol, side, price, tp_pct, sl_pct, amount_usdt, leverage, validity, app_state, decision_id):
         if not app_state.is_running:
             return "Bot duraklatıldı.", "warning"
 
@@ -46,7 +46,9 @@ class PaperExchange:
             'sl': sl,
             'pnl': 0.0,             # Başlangıçta 0
             'start_time': time.time(),
-            'validity': validity
+            'validity': validity,
+            'decision_id': decision_id  # Decision ID
+            
         }
         
         self.balance -= margin
@@ -54,7 +56,7 @@ class PaperExchange:
     
     def check_positions(self, symbol, current_price):
         if symbol not in self.positions:
-            return None, None, None, 0.0, 0.0
+            return None, None, None, 0.0, 0.0, None
 
         pos = self.positions[symbol]
         side = pos['side']
@@ -114,15 +116,18 @@ class PaperExchange:
 
         if close_reason:
             # Pozisyonu Kapatmadan önce log verilerini hazırla
+
+            decision_id = pos.get('decision_id') # <--- ID'Yİ ÇEK
+
             log_msg = f"🏁 KAPANDI: {symbol.upper()} ({close_reason}) | PnL: {pnl:.2f} USDT | Enter: {entry} | Close: {current_price} | Peak Seen: {peak_price}"
             color = "success" if pnl > 0 else "error"
             
             # Kapatma işlemini çağır (Geçmişe kaydeder ve siler)
             self.close_position(symbol, close_reason, pnl)
             
-            return log_msg, color, symbol, pnl, peak_price 
+            return log_msg, color, symbol, pnl, peak_price, decision_id
 
-        return None, None, None, 0.0, 0.0
+        return None, None, None, 0.0, 0.0, None
     
     def close_position(self, symbol, reason, pnl):
         # --- DÜZELTME: ZORUNLU KÜÇÜK HARF ---

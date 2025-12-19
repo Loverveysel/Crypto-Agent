@@ -1,4 +1,3 @@
-
 import asyncio
 from collections import defaultdict, deque  # <--- 'deque' EKLENDİ
 import time
@@ -10,11 +9,22 @@ import threading
 
 # Modules
 from config import (
-    USE_GROQCLOUD, GROQCLOUD_API_KEY, GROQCLOUD_MODEL,
-    USE_MAINNET, REAL_TRADING_ENABLED, API_KEY, API_SECRET, IS_TESTNET,
-    TARGET_CHANNELS, RSS_FEEDS,
-    API_ID, API_HASH, TELETHON_SESSION_NAME,
-    STARTING_BALANCE, LEVERAGE, FIXED_TRADE_AMOUNT
+    USE_GROQCLOUD,
+    GROQCLOUD_API_KEY,
+    GROQCLOUD_MODEL,
+    USE_MAINNET,
+    REAL_TRADING_ENABLED,
+    API_KEY,
+    API_SECRET,
+    IS_TESTNET,
+    TARGET_CHANNELS,
+    RSS_FEEDS,
+    API_ID,
+    API_HASH,
+    TELETHON_SESSION_NAME,
+    STARTING_BALANCE,
+    LEVERAGE,
+    FIXED_TRADE_AMOUNT,
 )
 from exchange import PaperExchange
 from brain import AgentBrain
@@ -22,22 +32,23 @@ from price_buffer import PriceBuffer
 from binance_client import BinanceExecutionEngine
 from data_collector import TrainingDataCollector
 from dataset_manager import DatasetManager
-from news_memory import NewsMemory
+from database import MemoryManager  # NewsMemory yerine
 from dashboard import create_dashboard
 import services
 
-#Path Fix
+# Path Fix
 path = os.path.realpath(__file__)
 dir = os.path.dirname(path)
-dir = dir.replace('src', 'data')
+dir = dir.replace("src", "data")
 os.chdir(dir)
 
-SESSION_PATH = os.path.join(dir, 'crypto_agent_session')
+SESSION_PATH = os.path.join(dir, "crypto_agent_session")
 print("CWD:", os.getcwd())
 print("SESSION_PATH:", SESSION_PATH)
 print("SESSION EXISTS:", os.path.exists(SESSION_PATH))
 print("SESSION FILES:", os.listdir(os.path.dirname(SESSION_PATH)))
 print("API_ID:", API_ID)
+
 
 # --- GLOBAL STATE CONTAINER ---
 class BotContext:
@@ -47,45 +58,55 @@ class BotContext:
         self.runtime_logs = deque(maxlen=200)
         self.ai_decisions = deque(maxlen=100)
 
+
 ctx = BotContext()
+
 
 # --- INITIALIZATION ---
 # 1. Objects
 class SharedState:
-    def __init__(self): self.is_running = True
+    def __init__(self):
+        self.is_running = True
+
 
 ctx.app_state = SharedState()
 ctx.market_memory = defaultdict(PriceBuffer)
 ctx.exchange = PaperExchange(STARTING_BALANCE)
 ctx.brain = AgentBrain(
-    use_groqcloud=USE_GROQCLOUD, 
-    api_key=GROQCLOUD_API_KEY, 
-    groqcloud_model=GROQCLOUD_MODEL
+    use_groqcloud=USE_GROQCLOUD,
+    api_key=GROQCLOUD_API_KEY,
+    groqcloud_model=GROQCLOUD_MODEL,
 )
 ctx.real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTNET)
 ctx.collector = TrainingDataCollector()
 ctx.dataset_manager = DatasetManager()
-SESSION_PATH = os.path.join(dir, 'crypto_agent_session')
+SESSION_PATH = os.path.join(dir, "crypto_agent_session")
 print("CWD:", os.getcwd())
 print("SESSION_PATH:", SESSION_PATH)
 print("SESSION EXISTS:", os.path.exists(SESSION_PATH))
 print("SESSION FILES:", os.listdir(os.path.dirname(SESSION_PATH)))
 print("API_ID:", API_ID)
 print("API_HASH:", API_HASH)
-ctx.telegram_client = TelegramClient(SESSION_PATH, API_ID, API_HASH, use_ipv6=False, timeout=10)
+ctx.telegram_client = TelegramClient(
+    SESSION_PATH, API_ID, API_HASH, use_ipv6=False, timeout=10
+)
 ctx.stream_command_queue = None
-ctx.news_memory = NewsMemory()
+ctx.memory = MemoryManager()
+
 
 # 2. Logger Wrapper
 def log_ui_wrapper(message, type="info"):
     timestamp = time.strftime("%H:%M:%S")
     icon = "📝"
-    if type == "success": icon = "✅"
-    elif type == "error": icon = "❌"
-    elif type == "warning": icon = "⚠️"
+    if type == "success":
+        icon = "✅"
+    elif type == "error":
+        icon = "❌"
+    elif type == "warning":
+        icon = "⚠️"
 
     full_msg = f"[{timestamp}] {icon} {message}"
-    print(full_msg) 
+    print(full_msg)
 
     # 1. HAFIZAYA KAYDET (Kritik Hamle)
     ctx.runtime_logs.append(full_msg)
@@ -97,43 +118,53 @@ def log_ui_wrapper(message, type="info"):
     except Exception:
         pass
 
+
 ctx.log_ui = log_ui_wrapper
+
 
 # --- STARTUP TASKS ---
 async def start_tasks():
+    ctx.memory.load_recent_history(ctx)
     ctx.stream_command_queue = asyncio.Queue()
     # 1. API Connection & Sync
     if REAL_TRADING_ENABLED:
         await ctx.real_exchange.connect()
-        
+
         real_total, real_available = await ctx.real_exchange.get_usdt_balance()
-        
+
         if real_total > 0:
             ctx.exchange.balance = real_total
             ctx.exchange.initial_balance = real_total
             # Note: STARTING_BALANCE is a constant, so we update the instance only
-            
-            ctx.log_ui(f"✅ Bakiye Eşitlendi: {real_total:.2f} USDT (Kullanılabilir: {real_available:.2f})", "success")
+
+            ctx.log_ui(
+                f"✅ Bakiye Eşitlendi: {real_total:.2f} USDT (Kullanılabilir: {real_available:.2f})",
+                "success",
+            )
         else:
-            ctx.log_ui("⚠️ Gerçek bakiye çekilemedi veya 0. Varsayılan kullanılıyor.", "warning")
+            ctx.log_ui(
+                "⚠️ Gerçek bakiye çekilemedi veya 0. Varsayılan kullanılıyor.", "warning"
+            )
     else:
         ctx.log_ui("⚠️ Gerçek İşlem Kapalı (Paper Trading Modu)", "warning")
-    
+
     # 2. Launch Loops
-    #asyncio.create_task(services.rss_loop(ctx)) # RSS Loopü devre dışı bırakıldı
+    # asyncio.create_task(services.rss_loop(ctx)) # RSS Loopü devre dışı bırakıldı
     asyncio.create_task(services.websocket_loop(ctx))
     asyncio.create_task(services.collector_loop(ctx))
     asyncio.create_task(services.telegram_loop(ctx))
     asyncio.create_task(services.position_monitor_loop(ctx))
+
+
 # --- UI ENTRY POINT ---
-@ui.page('/') 
+@ui.page("/")
 def index():
     async def manual_news_handler(text, source="MANUAL"):
         await services.process_news(text, source, ctx)
 
     # Dashboard'a artık 'ctx' nesnesini de gönderiyoruz
     ctx.log_container = create_dashboard(
-        ctx=ctx, # <--- YENİ: Tüm context'i gönder
+        ctx=ctx,  # <--- YENİ: Tüm context'i gönder
         on_manual_submit=manual_news_handler,
         existing_logs=ctx.runtime_logs,
     )
