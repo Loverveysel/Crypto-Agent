@@ -350,109 +350,141 @@ async def process_news(msg, source, ctx):
 
 # --- LOOPS ---
 
+# src/services.py içine
+
 async def websocket_loop(ctx):
-    print("[SYSTEM] Websocket Starting (Sniper Mode)...")
-    while True:
+    """
+    Binance Websocket verilerini dinler, hafızayı günceller 
+    ve anlık PnL takibi için Exchange'i tetikler.
+    """
+    retry_count = 0
+    while ctx.app_state.is_running:
         try:
-            async with websockets.connect(WEBSOCKET_URL) as ws:
-                ctx.log_ui("Websocket Connected ✅ (Standing By)", "success")
-                async def sender():
-                    while True:
-                        command = await ctx.stream_command_queue.get()
-                        await ws.send(json.dumps(command))
-                        ctx.log_ui(f"📡 Stream Updated: {command['params']}", "info")
-                async def receiver():
-                    async for msg in ws:
-                        try:
-                            raw_data = json.loads(msg)
-                            if 'data' in raw_data: data = raw_data['data']
-                            else: data = raw_data
-                            if isinstance(data, dict) and data.get('e') == 'kline':
-                                pair = data['s'].lower()
-                                k = data['k']
-                                price = float(k['c'])
-                                is_closed = k['x']
-                                ts = k['t'] / 1000
-                                ctx.market_memory[pair].update_candle(price, ts, is_closed)
-                                log, color, closed_sym, pnl, peak_price = ctx.exchange.check_positions(pair, price)
+            # Abonelik kuyruğu boşsa bekle
+            if ctx.stream_command_queue.empty() and not ctx.market_memory:
+                await asyncio.sleep(1)
+                continue
+
+            # Binance Stream URL
+            # Multi-stream formatı: /stream?streams=<stream1>/<stream2>...
+            base_url = "wss://stream.binance.com:9443/stream"
+            
+            async with websockets.connect(base_url) as ws:
+                ctx.log_ui("🔌 Websocket Bağlantısı Kuruldu.", "success")
+                retry_count = 0
+                
+                while ctx.app_state.is_running:
+                    # 1. YENİ ABONELİK VAR MI?
+                    while not ctx.stream_command_queue.empty():
+                        cmd = await ctx.stream_command_queue.get()
+                        await ws.send(json.dumps(cmd))
+                        # log_txt(f"📡 Komut Gönderildi: {cmd}") 
+
+                    # 2. VERİ GELİYOR MU?
+                    try:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                        data = json.loads(msg)
+                        
+                        # "stream": "btcusdt@kline_1m", "data": {...} formatı
+                        if 'data' in data and 'k' in data['data']:
+                            kline = data['data']['k']
+                            # --- KRİTİK DÜZELTME: SEMBOLÜ HEP KÜÇÜK HARF YAP ---
+                            symbol = kline['s'].lower() # 'BTCUSDT' -> 'btcusdt'
+                            close_price = float(kline['c'])
+                            
+                            # A) Market Memory Güncelle
+                            # Eğer hafızada yoksa oluştur
+                            if symbol not in ctx.market_memory:
+                                from src.price_buffer import PriceBuffer
+                                ctx.market_memory[symbol] = PriceBuffer()
+                                
+                            ctx.market_memory[symbol].update_candle(close_price, kline['t'], is_closed=kline['x'])
+                            
+                            # B) Exchange PnL Güncellemesi (Canlı Takip)
+                            # Fiyat değiştiği an pozisyonu kontrol et!
+                            if symbol in ctx.exchange.positions:
+                                log, color, closed_sym, pnl, peak = ctx.exchange.check_positions(symbol, close_price)
+                                
+                                # Eğer bir aksiyon alındıysa (Stop/TP/Trailing)
                                 if log:
                                     ctx.log_ui(log, color)
                                     log_txt(log)
-                                    asyncio.create_task(send_telegram_alert(ctx, log))
                                     if closed_sym:
-                                        ctx.dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
-                                        if REAL_TRADING_ENABLED:
-                                            asyncio.create_task(ctx.real_exchange.close_position_market(closed_sym))
-                                        unsubscribe_msg = {
-                                            "method": "UNSUBSCRIBE",
-                                            "params": [f"{closed_sym.lower()}@kline_1m"],
-                                            "id": int(time.time())
-                                        }
-                                        await ctx.stream_command_queue.put(unsubscribe_msg)
-                                        asyncio.create_task(update_system_balance(ctx, last_pnl=pnl))
-                        except Exception as e:
-                            ctx.log_ui(f"WS Error: {e}", "error")
-                await asyncio.gather(sender(), receiver())
+                                        # İşlem Kapandıysa Temizlik Yap
+                                        await handle_closed_position(ctx, closed_sym, pnl, peak)
+
+                    except asyncio.TimeoutError:
+                        # Ping atarak hattı canlı tut (Pong bekleme)
+                        await ws.pong()
+                        continue
+                        
         except Exception as e:
-            ctx.log_ui(f"WS Disconnected (5s): {e}", "error")
+            ctx.log_ui(f"⚠️ Websocket Koptu: {e}. 5sn sonra tekrar...", "error")
             await asyncio.sleep(5)
+            retry_count += 1
 
 async def position_monitor_loop(ctx):
     """
-    Bekçi Köpeği: Websocket veri akışından bağımsız olarak,
-    her 5 saniyede bir pozisyonların süresini ve durumunu kontrol eder.
+    Bekçi Köpeği: Websocket takılsa bile hafızadaki son fiyatla
+    süre (validity) kontrolü yapar.
     """
     ctx.log_ui("🛡️ Position Monitor (Bekçi) Devrede...", "success")
     
-    while True:
+    while ctx.app_state.is_running:
         try:
-            await asyncio.sleep(1) # 5 Saniyede bir kontrol et
+            await asyncio.sleep(2) # 2 Saniyede bir kontrol (Daha sıkı takip)
             
             if not ctx.exchange.positions:
                 continue
 
             # Sözlük değişirken hata almamak için listeye çevirip dönüyoruz
+            # Keys zaten küçük harf ('btcusdt') olmalı
             open_symbols = list(ctx.exchange.positions.keys())
             
             for pair in open_symbols:
                 # Hafızadaki son fiyatı al
+                if pair not in ctx.market_memory:
+                    continue
+                    
                 current_price = ctx.market_memory[pair].current_price
                 
-                # Eğer fiyat 0 ise (henüz veri gelmediyse) pas geç, yanlış kapatmasın
+                # Fiyat 0 ise pas geç
                 if current_price == 0: 
                     continue
 
-                # Mevcut kontrol fonksiyonunu çağır (Bu fonksiyon süreyi de kontrol ediyor)
-                log, color, closed_sym, pnl, peak_price = ctx.exchange.check_positions(pair, current_price)
+                # Kontrol Et
+                log, color, closed_sym, pnl, peak = ctx.exchange.check_positions(pair, current_price)
                 
                 if log:
-                    # Eğer bir kapatma kararı çıktıysa (Süre doldu veya TP/SL)
                     ctx.log_ui(log, color)
                     log_txt(log)
-                    asyncio.create_task(send_telegram_alert(ctx, log))
-                    
                     if closed_sym:
-                        # 1. Dataset'e kaydet
-                        ctx.dataset_manager.log_trade_exit(closed_sym, pnl, "Closed", peak_price)
-                        
-                        # 2. Gerçek Borsada Kapat
-                        if REAL_TRADING_ENABLED:
-                            asyncio.create_task(ctx.real_exchange.close_position_market(closed_sym))
-                        
-                        # 3. Stream Aboneliğini İptal Et (Trafik yapmasın)
-                        unsubscribe_msg = {
-                            "method": "UNSUBSCRIBE",
-                            "params": [f"{closed_sym.lower()}@kline_1m"],
-                            "id": int(time.time())
-                        }
-                        await ctx.stream_command_queue.put(unsubscribe_msg)
-                        
-                        # 4. Bakiyeyi Güncelle
-                        asyncio.create_task(update_system_balance(ctx, last_pnl=pnl))
+                        await handle_closed_position(ctx, closed_sym, pnl, peak)
 
         except Exception as e:
-            ctx.log_ui(f"⚠️ Monitor Loop Hatası: {e}", "error")
+            print(f"⚠️ Monitor Loop Hatası: {e}")
             await asyncio.sleep(5)
+
+# Yardımcı Fonksiyon (Kod tekrarını önlemek için)
+async def handle_closed_position(ctx, symbol, pnl, peak_price):
+    """Pozisyon kapandığında yapılacak standart işlemler."""
+    # 1. Dataset
+    ctx.dataset_manager.log_trade_exit(symbol, pnl, "Closed", peak_price)
+    
+    # 2. Gerçek Borsa (Real Trading açıksa)
+    if REAL_TRADING_ENABLED:
+        asyncio.create_task(ctx.real_exchange.close_position_market(symbol))
+    
+    # 3. Stream İptal
+    try:
+        unsubscribe_msg = {
+            "method": "UNSUBSCRIBE",
+            "params": [f"{symbol.lower()}@kline_1m"],
+            "id": int(time.time())
+        }
+        await ctx.stream_command_queue.put(unsubscribe_msg)
+    except:
+        pass
 
 async def telegram_loop(ctx):
     ctx.log_ui("Telegram Bağlanıyor...", "info")
