@@ -286,7 +286,8 @@ async def process_news(msg, source, ctx):
         changes = stats.get_all_changes()
 
         # BTC Trend
-        btc_stats = ctx.market_memory.get("btcusdt")
+        btc_pair = "btcusdt"
+        btc_stats = ctx.market_memory.get(btc_pair)
 
         btc_is_stale = False
         if not btc_stats or not btc_stats.candles:

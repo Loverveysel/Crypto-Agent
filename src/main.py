@@ -81,12 +81,6 @@ ctx.real_exchange = BinanceExecutionEngine(API_KEY, API_SECRET, testnet=IS_TESTN
 ctx.collector = TrainingDataCollector()
 ctx.dataset_manager = DatasetManager()
 SESSION_PATH = os.path.join(dir, "crypto_agent_session")
-print("CWD:", os.getcwd())
-print("SESSION_PATH:", SESSION_PATH)
-print("SESSION EXISTS:", os.path.exists(SESSION_PATH))
-print("SESSION FILES:", os.listdir(os.path.dirname(SESSION_PATH)))
-print("API_ID:", API_ID)
-print("API_HASH:", API_HASH)
 ctx.telegram_client = TelegramClient(
     SESSION_PATH, API_ID, API_HASH, use_ipv6=False, timeout=10
 )
