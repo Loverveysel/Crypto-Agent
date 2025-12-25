@@ -5,10 +5,12 @@ import sys
 import os
 import aiofiles # 'pip install aiofiles' şart
 from groq import AsyncGroq
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import GROQCLOUD_API_KEY
 
 # GROQ MODEL ADI (Groq'daki güncel adı kontrol et, genelde llama-3.3-70b-versatile)
-MODEL_NAME = "llama-3.3-70b-versatile" 
+MODEL_NAME = "meta-llama/llama-guard-4-12b" 
 OUTPUT_FILE = "data/synthetic_finetune_data.jsonl" # JSONL hayat kurtarır
 
 client = AsyncGroq(api_key=GROQCLOUD_API_KEY)

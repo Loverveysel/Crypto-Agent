@@ -20,7 +20,7 @@ class AgentBrain:
     def __init__(self, use_groqcloud=True, api_key=None, groqcloud_model="google/gemini-2.0-flash-exp:free"):
         self.use_groqcloud = use_groqcloud
         self.model = groqcloud_model
-        self.ollama_model = "gemma3:12b"  # Fallback
+        self.ollama_model = "LlamaTrader"  # Fallback
         self.api_key = api_key
         self.coin_cache = {} # Cache
         self.last_request_time = 0

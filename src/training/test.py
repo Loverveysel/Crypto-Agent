@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 
 # Proje Modülleri
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TARGET_CHANNELS, API_ID, API_HASH, TELETHON_SESSION_NAME, STARTING_BALANCE
 from main import BotContext, SharedState
 from binance_client import BinanceExecutionEngine
@@ -229,7 +231,7 @@ async def simulate_process_news(message, ctx, f_log):
         except Exception as e:
             print(f"⚠️ Simülasyon Hatası ({pair}): {e}")
 
-async def run_simulation():
+async def run_simulation(model = "LlamaTrader"):
     print("🚀 NEXUS BACKTEST SİMÜLASYONU BAŞLIYOR...")
     
     # Context Hazırlığı
@@ -242,7 +244,7 @@ async def run_simulation():
         api_key=GROQCLOUD_API_KEY,
         groqcloud_model=GROQCLOUD_MODEL,
     )
-    
+    ctx.brain.ollama_model = model
     # Borsa bağlantısı (Sadece geçmiş veri çekmek için)
     ctx.real_exchange = BinanceExecutionEngine("", "") 
     await ctx.real_exchange.connect()
@@ -251,8 +253,7 @@ async def run_simulation():
     path = os.path.realpath(__file__)
     dir = os.path.dirname(path)
     dir = dir.replace("src", "data")
-    os.chdir(dir)
-
+    dir = dir.replace("training", "")
     SESSION_PATH = os.path.join(dir, "crypto_agent_session")
     client = TelegramClient(SESSION_PATH, API_ID, API_HASH)
     await client.connect()
@@ -260,7 +261,10 @@ async def run_simulation():
     # Zaman Aralığı (Son 3 Gün)
     three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
     
-    results_file = "backtest_results_groq.txt"
+    results_file = "backtest_results_" + model + ".txt"
+    if not os.path.exists(results_file):
+        os.makedirs(os.path.dirname(results_file), exist_ok=True)
+        
     with open(results_file, "a", encoding="utf-8") as f:
         f.write(f"\n--- SIMULATION RUN: {datetime.now()} ---\n")
 
@@ -274,4 +278,5 @@ async def run_simulation():
     await client.disconnect()
 
 if __name__ == "__main__":
-    asyncio.run(run_simulation())
+    # Run the simulation for 2 different models
+    asyncio.run(run_simulation("LlamaTrader"))
