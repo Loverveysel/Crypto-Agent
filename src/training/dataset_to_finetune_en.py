@@ -79,7 +79,7 @@ async def ask_teacher_llm(row, phase="canonical", persona="neutral"):
     funding = d['funding']
     momentum = d['momentum']
     btc_trend = d['btc_trend']
-    direction = d['direction']
+    direction = d['action']
     peak_pct = d['peak_pct']
     peak_min = d['peak_min']
 
