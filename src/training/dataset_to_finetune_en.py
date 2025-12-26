@@ -41,6 +41,8 @@ Hard Consistency Rules:
 - VALID_TRADE -> Risk Posture must be Moderate or Aggressive.
 - Momentum / VolatilityExpansion -> Horizon: Immediate or Short.
 - MeanReversion / NewsDecay -> Horizon: Short only.
+
+If the news catalyst is structurally or fundamentally insufficient to trigger the observed move (e.g., minor social media news followed by a major price expansion in a large-cap asset), you MUST state clearly that the move was likely driven by pre-existing technical momentum, BTC beta, or organic order flow rather than the news itself. Identify the news as 'Incidental' rather than 'Causal'
 """
 
 # Config
@@ -70,48 +72,49 @@ def get_sampling_params(phase, persona):
 async def ask_teacher_llm(row, phase="canonical", persona="neutral"):
     d = row['data']
     news = row['news']
-    
+    category = d['category']
+    market_cap = d['market_cap']
+    symbol = d['symbol']
+    rsi = d['rsi']
+    funding = d['funding']
+    momentum = d['momentum']
+    btc_trend = d['btc_trend']
+    direction = d['direction']
+    peak_pct = d['peak_pct']
+    peak_min = d['peak_min']
 
     # 2️⃣, 3️⃣, 4️⃣, 5️⃣ Düzeltmeler: Edge, Horizon, Consistency ve Risk Posture
-    prompt = f"""You are a Lead Event-Driven Quant.
-MISSION: Objectively determine if an asymmetric edge exists.
+    prompt = f"""Role: Market Microstructure Analyst. Explain the MECHANISM of a KNOWN price move. 
+Context: Trade is finished. Facts are Ground Truth. 
 
-After the decision is fixed, explain the reasoning from a ({persona}) risk perspective.
+DATA:
+News: {news}
+Asset: {symbol} | {category} | MCAP: {market_cap}
+Pre-Event: RSI: {rsi} | Fund: {funding} | Mom: {momentum} | BTC: {btc_trend}
+Outcome: {direction} | {peak_pct}% | in {peak_min} minutes
 
+OBJECTIVE: Explain WHY the move happened via:
+1. Catalyst:
+- Structural = fundamentals / protocol / regulation
+- Positioning Shock = liquidations, short-covering, leverage imbalance
+- Sentiment = attention or narrative without structural change
+- Noise = non-causal coincidence
+2. Friction/Fuel: How metrics (RSI/Fund/Mom) hindered or accelerated transmission. Metrics are NOT reasons; they are environment.
+3. Transmission: Explicitly trace
+News -> which participants reacted -> how liquidity/order flow shifted -> why price expanded
 
-NEWS: {news}
-CONTEXT: {d['symbol']} | {d['category']} | MCAP: {d['market_cap']}
-METRICS: RSI: {d['rsi']}, BTC: {d['btc_trend']}%, Funding: {d['funding']}%, Mom: {d['momentum']['1h']}%
+STRICT RULES:
+- causal_link = true ONLY if news initiated the move.
+- causal_link = false if move is BTC Beta, Technical Drift, or Noise.
+- Respect Scale Inertia: Large caps (100B+) need massive catalysts; otherwise, Causal=False.
+- No vague language (may/might). No trading advice. 
 
-CONSISTENCY RULES:
-- Momentum / Liquidity / VolatilityExpansion -> Horizon: Immediate or Short.
-- MeanReversion / NewsDecay -> Horizon: Short only.
-- NO_TRADE Verdict -> Edge: None, Horizon: None, Risk Posture: Avoid.
-- VALID_TRADE Verdict -> Risk Posture: Moderate or Aggressive.
-
-
-ANALYSIS STRUCTURE (Strictly follow this internal logic):
-1) Catalyst DNA (Primary Driver): Assess if the news has the structural power to force a price shift given the asset's Market Cap. If the news is "noise" relative to the 1.8T/117B valuation, the verdict is NO_TRADE regardless of metrics.
-
-2) Contextual Friction (The Filter): Use RSI, Funding, and Momentum ONLY to determine if the market is too "tired" or "over-leveraged" to react to the news. Metrics are filters, NOT the reason for the trade.
-
-3) Synthesis Logic: Your reasoning must explain: "The catalyst is [X], and the current market friction (RSI/Funding) [allows/prevents] this move because [Y]."
-
-CONSTRAINTS:
-- MINIMUM 120 words of dense, professional technical analysis.
-- NO bullet points. Use prose with high semantic density.
-- Do NOT repeat the input metrics. Use them to draw conclusions (e.g., instead of "RSI is 80", use "The technical overextension evidenced by an 80+ RSI suggests...").
-- ZERO hindsight bias. No "post-event price action" talk.
-- Use professional terminology: (e.g., Delta imbalance, Mean reversion pressure, Liquidity absorption, Gamma exposure, Neutralizing positioning).
-
-OUTPUT STRICT JSON:
-{{
-    "reasoning": "80-120 words contextual synthesis. Analyze the friction between the catalyst's power and the current metrics (RSI/Funding/Mom). Explain why the market [will/won't] absorb this news based ONLY on provided data. No hallucinated metrics.",
-    "edge_type": "Momentum|Liquidity|MeanReversion|NewsDecay|VolatilityExpansion|None",
-    "trade_horizon": "Immediate|Short|None",
-    "risk_posture": "Avoid|Moderate|Aggressive",
-    "verdict": "VALID_TRADE|NO_TRADE"
-}}"""
+JSON OUTPUT:
+{
+  "reasoning": "90-130 words. Mechanistic flow analysis. Focus on news-to-price transmission.",
+  "causal_link": true/false,
+  "confidence_score": 0-100
+}"""
     
     params = get_sampling_params(phase, persona)
     retries = 0
@@ -192,41 +195,46 @@ async def process_distillation():
                 abs(d['btc_trend']) > 1.2
             ) else "canonical"            
             res = await ask_teacher_llm(row, phase=phase, persona=persona)
-            
-            # 7️⃣ Düzeltme: Async Logging & Safety Check
-            verdict = res.get("verdict", "ERR") if res else "ERR"
-            
-            if res and verdict != "ERR":
-                # Semantik Doğrulama (Post-processing)
-                if verdict == "NO_TRADE":
-                    res["risk_posture"] = "Avoid"
-                    res["edge_type"] = "None"
-                    res["trade_horizon"] = "None"
 
+            casual_link = res.get("casual_link", True)
+            if casual_link == "True":
+                casual_link = True
+            elif casual_link == "False":
+                casual_link = False
+            else:
+                casual_link = True
+
+            execution = {
+                "tp_pct": None,
+                "validity_minutes": None
+            }
+            if casual_link:
+                execution = {
+                    "tp_pct": d["peak_pct"],
+                    "validity_minutes": d["peak_min"],
+                    "confidence": res.get("confidence", 0),
+                    "action": d["action"],
+                }
+
+            else:
                 execution = {
                     "tp_pct": None,
-                    "validity_minutes": None
+                    "validity_minutes": None,
+                    "confidence": random.randint(0, 50),
+                    "action": "HOLD"
                 }
-                if verdict == "VALID_TRADE":
-                    execution = {
-                        "tp_pct": d["peak_pct"],
-                        "validity_minutes": d["peak_pct"]
-                    }
-                entry = {
-                    "instruction": INSTRUCTION,
-                    "input": f"News: {row['news']}\nContext: {d['symbol']} | {d['category']} | {d['market_cap']}\nMetrics: RSI {d['rsi']} | BTC {d['btc_trend']}% | Funding: {d['funding']}% | Momentum(1 hour): {d['momentum']['1h']}% ",
-                    "output": {
-                        "analysis": res["reasoning"],
-                        "edge": res["edge_type"],
-                        "decision": verdict,
-                        "horizon": res["trade_horizon"],
-                        "posture": res["risk_posture"],
-                        **execution
-                    }
-                }
-                await out_f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             
-            sys.stdout.write(f"\r🚀 {i+1}/{len(lines)} | P: {persona[:4]} | V: {verdict}")
+            entry = {
+                "instruction": INSTRUCTION,
+                "input": f"News: {row['news']}\nContext: {d['symbol']} | {d['category']} | {d['market_cap']}\nMetrics: RSI {d['rsi']} | BTC {d['btc_trend']}% | Funding: {d['funding']}% | Momentum(1 hour): {d['momentum']['1h']}% ",
+                "output": {
+                    "analysis": res["reasoning"],
+                    **execution
+                }
+            }
+            await out_f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            
+            sys.stdout.write(f"\r🚀 {i+1}/{len(lines)}")
             sys.stdout.flush()
 
 if __name__ == "__main__":
