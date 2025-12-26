@@ -94,14 +94,27 @@ Pre-Event: RSI: {rsi} | Fund: {funding} | Mom: {momentum} | BTC: {btc_trend}
 Outcome: {direction} | {peak_pct}% | in {peak_min} minutes
 
 OBJECTIVE: Explain WHY the move happened via:
-1. Catalyst:
-- Structural = fundamentals / protocol / regulation
-- Positioning Shock = liquidations, short-covering, leverage imbalance
-- Sentiment = attention or narrative without structural change
-- Noise = non-causal coincidence
-2. Friction/Fuel: How metrics (RSI/Fund/Mom) hindered or accelerated transmission. Metrics are NOT reasons; they are environment.
-3. Transmission: Explicitly trace
-News -> which participants reacted -> how liquidity/order flow shifted -> why price expanded
+ANALYSIS OBJECTIVE:
+
+Explain the move by decomposing it into a MARKET REACTION CHAIN:
+
+1) Catalyst Classification  
+Classify the news by its FUNCTION, not importance:
+- Structural (fundamentals / protocol / regulation)
+- Positioning Shock (liquidations, short-covering, crowd imbalance)
+- Sentiment Trigger (attention, headlines, narrative reinforcement)
+- Non-causal (noise coinciding with broader market flow)
+
+2) Market State Interaction  
+Explain how the pre-event state interacted with the news:
+- Did funding, RSI, or momentum act as RESISTANCE or AMPLIFIER?
+- Was the market positioned to absorb the news or vulnerable to repricing?
+
+Metrics are NOT reasons — they only shape transmission efficiency.
+
+3) Transmission Mechanism (Mandatory)
+Explicitly explain:
+News → Which participants reacted → What happened to order flow / liquidity → Why price expanded
 
 STRICT RULES:
 - causal_link = true ONLY if news initiated the move.
@@ -110,11 +123,11 @@ STRICT RULES:
 - No vague language (may/might). No trading advice. 
 
 JSON OUTPUT:
-{
+{{
   "reasoning": "90-130 words. Mechanistic flow analysis. Focus on news-to-price transmission.",
   "causal_link": true/false,
   "confidence_score": 0-100
-}"""
+}}"""
     
     params = get_sampling_params(phase, persona)
     retries = 0
