@@ -6,9 +6,12 @@ import random
 import aiofiles
 import re
 from groq import AsyncGroq
+from google import genai
+from google.genai import types
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import GROQCLOUD_API_KEY
+from config import GROQCLOUD_API_KEY, GEMINI_MODEL, GEMINI_API_KEY
+
 
 INSTRUCTION = """
 You are a Lead Event-Driven Quantitative Trader.
@@ -50,8 +53,11 @@ MODEL_NAME = "llama-3.3-70b-versatile"
 INPUT_FILE = "data/raw_market_outcomes_v1_5.jsonl"
 OUTPUT_FILE = "data/synthetic_finetune_data_v2_5.jsonl"
 
-client = AsyncGroq(api_key=GROQCLOUD_API_KEY)
 
+
+client = AsyncGroq(api_key=GROQCLOUD_API_KEY)
+gclient = genai.Client(api_key=GEMINI_API_KEY)
+USE_GEMINI = True
 
 def get_sampling_params(phase, persona):
     # Çok daha düşük temperature: Daha kararlı ve daha az "uydurma"
@@ -115,13 +121,25 @@ JSON OUTPUT:
     max_retries = 3
     while retries < max_retries:
         try:
-            response = await client.chat.completions.create(
-                model=MODEL_NAME, 
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                **params
-            )
-            return json.loads(response.choices[0].message.content)
+            if USE_GEMINI:
+                gclient.models.generate_content(
+                    model = GEMINI_MODEL,
+                    contents= prompt,
+                    config= types.GenerateContentConfig(
+                        temperature=params['temperature'],
+                        top_p=params['top_p'],
+                        frequency_penalty=params['frequency_penalty'],
+                        presence_penalty=params['presence_penalty']
+                    )
+                )
+            else:
+                response = await client.chat.completions.create(
+                    model=MODEL_NAME, 
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    **params
+                )
+                return json.loads(response.choices[0].message.content)
         except Exception as e:
             error_msg = str(e)
 

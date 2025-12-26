@@ -16,7 +16,9 @@ load_dotenv()
 USE_GROQCLOUD = True
 GROQCLOUD_API_KEY = os.getenv('GROQCLOUD_API_KEY')
 GROQCLOUD_MODEL = os.getenv('GROQCLOUD_MODEL', 'google/gemini-2.0-flash-exp:free')
-
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL')
+USE_GEMINI = os.getenv('USE_GEMINI')
 LLM_CONFIG = {
     "system_prompt": SYSTEM_PROMPT,
     "temperature": 0.0,
