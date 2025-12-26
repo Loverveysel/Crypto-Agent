@@ -5,6 +5,8 @@ from groq import AsyncGroq
 import ollama
 import time
 import re
+from google import genai
+from google.genai import types
 
 # Local modules
 from config import (
@@ -17,7 +19,7 @@ from config import (
 from utils import search_web_sync, coin_categories
 
 class AgentBrain:
-    def __init__(self, use_groqcloud=True, api_key=None, groqcloud_model="google/gemini-2.0-flash-exp:free"):
+    def __init__(self, use_groqcloud=True, api_key=None, groqcloud_model="google/gemini-2.0-flash-exp:free", use_gemini = False, google_api_key = None, gemini_model = "gemma-3-27b-it"):
         self.use_groqcloud = use_groqcloud
         self.model = groqcloud_model
         self.ollama_model = "LlamaTrader"  # Fallback
@@ -26,7 +28,9 @@ class AgentBrain:
         self.last_request_time = 0
         # 60s for 1 request per minute limit. 62s for safety.
         self.MIN_REQUEST_INTERVAL = 0
-
+        self.use_gemini = use_gemini
+        self.google_api_key = google_api_key
+        self.gemini_model = gemini_model
         # 1. OpenRouter (GroqCloud) Setup
         if self.use_groqcloud:
             print(f"🧠 [BRAIN] Mode: OPENROUTER ({self.model})")
@@ -34,6 +38,10 @@ class AgentBrain:
                 api_key=self.api_key,
             )
         
+        if self.use_gemini:
+            print(f"🧠 [BRAIN] Mode: GOOGLE GEMINI ({self.gemini_model})")
+            self.client = genai.Client(api_key=self.google_api_key)
+            
         # 2. Local Ollama Setup (Fallback)
         else:
             print(f"🧠 [BRAIN] Mode: LOCAL OLLAMA ({self.ollama_model})")
@@ -117,7 +125,7 @@ class AgentBrain:
                 if self.use_groqcloud:
                     if compound_custom:
                         completion = await self.client.chat.completions.create(
-                            model=self.model,
+                            model=self.gemini_model,
                             messages=messages_payload,
                             response_format={"type": "json_object"} if json_mode else None,
                             temperature=temperature,
@@ -137,6 +145,19 @@ class AgentBrain:
                     cleaned_response = self._extract_json(raw_response)
                     return cleaned_response
                 # --- B. OLLAMA ---
+                elif self.use_gemini:
+                    res = self.client.models.generate_content(
+                        model=self.gemini_model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature = temperature,
+                        ),
+                    )
+                    if json_mode:
+                        cleaned_response = self._extract_json(res.text)
+                        return cleaned_response
+                    else:
+                        return res.text
                 else:
                     options = {
                         'temperature': temperature,

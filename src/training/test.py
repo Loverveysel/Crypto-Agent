@@ -16,7 +16,7 @@ from utils import find_coins, get_top_100_map
 from price_buffer import PriceBuffer
 from exchange import PaperExchange
 from brain import AgentBrain
-from config import GROQCLOUD_API_KEY, GROQCLOUD_MODEL
+from config import GROQCLOUD_API_KEY, GROQCLOUD_MODEL, GOOGLE_API_KEY, GEMINI_MODEL
 
 # 1. DATABASE'İ DEVRE DIŞI BIRAKAN MOCK
 class MockMemory:
@@ -243,6 +243,9 @@ async def run_simulation(model = "LlamaTrader"):
         use_groqcloud=False,
         api_key=GROQCLOUD_API_KEY,
         groqcloud_model=GROQCLOUD_MODEL,
+        use_gemini=True,
+        google_api_key=GOOGLE_API_KEY,
+        gemini_model=GEMINI_MODEL
     )
     ctx.brain.ollama_model = model
     # Borsa bağlantısı (Sadece geçmiş veri çekmek için)

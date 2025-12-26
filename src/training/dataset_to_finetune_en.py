@@ -8,46 +8,46 @@ import re
 from groq import AsyncGroq
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, Field
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import GROQCLOUD_API_KEY, GEMINI_MODEL, GOOGLE_API_KEY
 
+class Response(BaseModel):
+    reasoning: str = Field(..., description="90-130 words. Mechanistic flow analysis. Focus on news-to-price transmission.")
+    causal_link: bool = Field(..., description="true ONLY if news initiated the move.")
+    confidence: int = Field(..., description="0-100")
 
 INSTRUCTION = """
-You are a Lead Event-Driven Quantitative Trader.
-Decisions are based strictly on pre-event information.
-Risk preference or narrative style must not affect decisions.
+## 1. CORE ROLE
+You are a Senior Event-Driven Execution Engine. Your sole purpose is to filter out market noise and identify high-conviction directional edges. You do not explain past movements; you calculate the immediate impact of new information.
 
-Core Mission:
-Identify asymmetric trading edges using strictly pre-event information.
-Default stance is NO_TRADE.
-Capital preservation overrides opportunity seeking.
+## 2. PHILOSOPHY: MARKET PHYSICS
+Every trade is a calculation of Energy vs. Mass within a Friction-filled environment.
 
-Evaluation Protocol:
+* Energy (News Strength): Classify news as Structural (Policy/Protocol), Positioning Shock (Liquidations/Forced Flows), Sentiment (Hype), or Noise. Only energy that FORCES participant action is valid.
+* Mass (Asset Inertia): Energy must be proportional to the asset's Market Cap and Relative Liquidity. High energy on a low-cap is an asymmetric edge; the same energy on BTC is often Noise.
+* Friction (Market State): RSI, Funding Rates, and Momentum define resistance. High friction (overbought/high funding) absorbs bullish energy. Friction never creates direction; it only blocks or permits it.
 
-1) Catalyst DNA:
-Determine whether the news is structurally capable of moving an asset of this Market Cap and Category.
-Price movement alone is never evidence.
+## 3. EXECUTION RULES
+* Default Stance: Your default state is HOLD.
+* Strict Temporal Blindness: Assume price is flat at t0. Ignore all price action occurring after the news timestamp. No hindsight reasoning is allowed.
+* The Forced Behavior Rule: You MUST explicitly identify a specific group (e.g., "Over-leveraged Shorts", "Institutional Mandates") that is forced to trade by this news. If no one is forced, the action is ALWAYS HOLD.
+* Causality Check: If the news is insufficient to move the asset’s mass, label it as "Incidental" and stay HOLD, even if the price is volatile.
+* Uncertainty: If the Energy/Mass balance is ambiguous, default to HOLD.
 
-2) Contextual Synthesis:
-Evaluate RSI, Funding, and Momentum for signs of positioning imbalance,
-liquidity absorption, squeeze risk, or mean reversion pressure.
-Momentum without structural support is NOT an edge.
+## 4. OUTPUT FORMAT (STRICT JSON ONLY)
+You must respond ONLY with a JSON object. No prose, no intro, no outro.
 
-3) Edge Detection:
-If and only if an asymmetric edge exists, classify the primary driver as:
-Momentum, Liquidity, MeanReversion, NewsDecay, or VolatilityExpansion.
-
-Hard Consistency Rules:
-
-- NO_TRADE -> Edge: None, Horizon: None, Risk Posture: Avoid.
-- VALID_TRADE -> Risk Posture must be Moderate or Aggressive.
-- Momentum / VolatilityExpansion -> Horizon: Immediate or Short.
-- MeanReversion / NewsDecay -> Horizon: Short only.
-
-If the news catalyst is structurally or fundamentally insufficient to trigger the observed move (e.g., minor social media news followed by a major price expansion in a large-cap asset), you MUST state clearly that the move was likely driven by pre-existing technical momentum, BTC beta, or organic order flow rather than the news itself. Identify the news as 'Incidental' rather than 'Causal'
+{{
+  "action": "LONG" | "SHORT" | "HOLD",
+  "confidence": <int 0-100>,
+  "expected_volatility": "Low" | "Medium" | "High",
+  "tp_pct": <float>,
+  "reason": "[Ultra-concise summary for the log]",
+  "validity_minutes": <int>
+}}
 """
-
 # Config
 MODEL_NAME = "llama-3.3-70b-versatile" 
 INPUT_FILE = "data/raw_market_outcomes_v1_5.jsonl"
@@ -84,37 +84,58 @@ async def ask_teacher_llm(row, phase="canonical", persona="neutral"):
     peak_min = d['peak_min']
 
     # 2️⃣, 3️⃣, 4️⃣, 5️⃣ Düzeltmeler: Edge, Horizon, Consistency ve Risk Posture
-    prompt = f"""Role: Market Microstructure Analyst. Explain the MECHANISM of a KNOWN price move. 
-Context: Trade is finished. Facts are Ground Truth. 
+    prompt = f"""
+Role: Senior Market Microstructure & Order Flow Analyst.
+Objective: Conduct a mechanical potentiality analysis of a news event at $t_0$.
+Philosophy: Every move has a source, but not every news item is a source. You judge the news solely on its ability to displace 'Mass' against existing 'Friction'.
 
-DATA:
+STRICT TEMPORAL BLINDNESS RULE:
+- You are at the exact millisecond of news release ($t_0$). 
+- You MUST NOT mention the provided outcome (Peak_Pct/Direction) in your 'reasoning' block. 
+- Use ONLY future-tense or conditional language (e.g., 'will force', 'should trigger', 'is likely to').
+- Your reasoning must justify a move *theoretically*, as if it hasn't happened yet.
+
+ASSET MASS VS. ENERGY CALCULATION:
+- Implied USD Move = (Test_Peak_Pct / 100) * Market_Cap.
+- Compare this USD value against the news quality. If a minor NFT launch or tweet is tested against a multi-billion dollar move, the energy is insufficient.
+
+--------------------------------
+INPUT DATA FOR EVALUATION:
 News: {news}
-Asset: {symbol} | {category} | MCAP: {market_cap}
-Pre-Event: RSI: {rsi} | Fund: {funding} | Mom: {momentum} | BTC: {btc_trend}
-Outcome: {direction} | {peak_pct}% | in {peak_min} minutes
+Context: {symbol} | {category} | MCAP: {market_cap}
+Pre-Event State (t0): RSI: {rsi} | Funding: {funding} | Momentum: {momentum} | BTC_Trend: {btc_trend}
+Move Under Test: {direction} | {peak_pct}% over {peak_min} mins
 
-OBJECTIVE: Explain WHY the move happened via:
-1. Catalyst:
-- Structural = fundamentals / protocol / regulation
-- Positioning Shock = liquidations, short-covering, leverage imbalance
-- Sentiment = attention or narrative without structural change
-- Noise = non-causal coincidence
-2. Friction/Fuel: How metrics (RSI/Fund/Mom) hindered or accelerated transmission. Metrics are NOT reasons; they are environment.
-3. Transmission: Explicitly trace
-News -> which participants reacted -> how liquidity/order flow shifted -> why price expanded
-4) Sentiment-Direction Divergence (Anomaly Check): If the news sentiment is BULLISH but the Observed Outcome is SHORT (or vice versa), you MUST explain this discrepancy. Do NOT assume the news caused the move. Instead, identify if this was a "Sell the News" event, "Exit Liquidity" maneuver, or if the move was entirely "Incidental" (driven by broader market flow/BTC beta).
-STRICT RULES:
-- causal_link = true ONLY if news initiated the move.
-- causal_link = false if move is BTC Beta, Technical Drift, or Noise.
-- Respect Scale Inertia: Large caps (100B+) need massive catalysts; otherwise, Causal=False.
-- No vague language (may/might). No trading advice. 
-- DIRECTIONAL CONSISTENCY: If your analysis says "traders bought" but the outcome is "SHORT," your analysis is logically broken. In such cases, you must reconsider the news as a "Liquidity Trap" or label the move as "Incidental." - NO PHANTOM BUYERS: Do not claim participants reacted in a direction that contradicts the move magnitude.
-JSON OUTPUT:
+--------------------------------
+STRICT ANALYSIS ARCHITECTURE:
+
+1. Catalyst DNA & Energy Classification:
+Categorize as Structural, Positioning Shock, Sentiment, or Noise.
+Does this specific news force a 'Mandatory Response' from any participant group? If not, it is low energy.
+
+2. Friction vs. Fuel Mechanics:
+Evaluate RSI and Funding as mechanical resistance.
+- Friction (Resistance): RSI > 70, High Positive Funding.
+- Fuel (Acceleration): RSI < 30, Neutral/Negative Funding.
+Explain if the catalyst has enough raw energy to overcome the observed friction for the 'Move Under Test'.
+
+3. Order Flow Path (Forced Behavior):
+Identify the 'Forced Participant'. Who is compelled to trade? (e.g., 'Leveraged shorts forced to cover', 'Institutional rebalancing').
+If the 'Move Under Test' direction contradicts news logic (e.g., Bullish News vs. Short Move), only validate it as 'Causal' if you identify a 'Sell the News' / 'Liquidity Grab' mechanic based on positioning extremes.
+
+--------------------------------
+STRICT OUTPUT CONSTRAINTS:
+- CAUSAL_LINK: Set 'true' ONLY if the news energy is structurally sufficient to drive the 'Move Under Test'. If {btc_trend} or organic technical drift explains it better, return 'false'.
+- NO POST-HOC REASONING: Do not say 'Because price moved...'. Say 'Because this news will force...'.
+- WORD COUNT: 110-150 words.
+
+JSON OUTPUT FORMAT:
 {{
-  "reasoning": "90-130 words. Mechanistic flow analysis. Focus on news-to-price transmission.",
-  "causal_link": true/false,
+  "reasoning": "Strictly mechanical synthesis at t0. MUST identify the Forced Participant and the Energy-Mass-Friction balance. Use only future/conditional tense.",
+  "causal_link": True/False,
   "confidence": 0-100
-}}"""
+}}
+"""
     
     params = get_sampling_params(phase, persona)
     retries = 0
@@ -122,16 +143,17 @@ JSON OUTPUT:
     while retries < max_retries:
         try:
             if USE_GEMINI:
-                gclient.models.generate_content(
+                res = gclient.models.generate_content(
                     model = GEMINI_MODEL,
                     contents= prompt,
                     config= types.GenerateContentConfig(
                         temperature=params['temperature'],
-                        top_p=params['top_p'],
-                        frequency_penalty=params['frequency_penalty'],
-                        presence_penalty=params['presence_penalty']
                     )
                 )
+                text = res.text.replace("```json", "").replace("```", "")
+                json_object = json.loads(text)
+                return json_object
+
             else:
                 response = await client.chat.completions.create(
                     model=MODEL_NAME, 
@@ -208,13 +230,7 @@ async def process_distillation():
             ) else "canonical"            
             res = await ask_teacher_llm(row, phase=phase, persona=persona)
 
-            casual_link = res.get("casual_link", True)
-            if casual_link == "True":
-                casual_link = True
-            elif casual_link == "False":
-                casual_link = False
-            else:
-                casual_link = True
+            casual_link = res['causal_link']
 
             execution = {
                 "tp_pct": None,
@@ -232,7 +248,7 @@ async def process_distillation():
                 execution = {
                     "tp_pct": None,
                     "validity_minutes": None,
-                    "confidence": random.randint(0, 50),
+                    "confidence": res.get("confidence", 0),
                     "action": "HOLD"
                 }
             
@@ -240,7 +256,7 @@ async def process_distillation():
                 "instruction": INSTRUCTION,
                 "input": f"News: {row['news']}\nContext: {d['symbol']} | {d['category']} | {d['market_cap']}\nMetrics: RSI {d['rsi']} | BTC {d['btc_trend']}% | Funding: {d['funding']}% | Momentum(1 hour): {d['momentum']['1h']}% ",
                 "output": {
-                    "analysis": res["reasoning"],
+                    "reason": res["reasoning"],
                     **execution
                 }
             }
